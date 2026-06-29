@@ -15,9 +15,11 @@ import {
   ArrowDown, 
   Edit3,
   CheckCircle2,
+  CheckCircle,
   AlertCircle,
   LogOut,
-  User
+  User,
+  ShieldCheck
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
@@ -111,6 +113,16 @@ export default function App() {
   const [profileConfirmPassword, setProfileConfirmPassword] = useState('');
   const [profileError, setProfileError] = useState('');
 
+  const [setupNewPassword, setSetupNewPassword] = useState('');
+  const [setupConfirmPassword, setSetupConfirmPassword] = useState('');
+  const [setupPhone, setSetupPhone] = useState('');
+  const [setupTalla, setSetupTalla] = useState('M');
+  const [setupDieta, setSetupDieta] = useState('OMNIVORA');
+  const [setupDisclaimerAccepted, setSetupDisclaimerAccepted] = useState(false);
+  const [setupTcAccepted, setSetupTcAccepted] = useState(false);
+  const [setupError, setSetupError] = useState('');
+  const [setupSaving, setSetupSaving] = useState(false);
+
   const [projects, setProjects] = useState([]);
   const [selectedProject, setSelectedProject] = useState(null);
   const [shows, setShows] = useState([]);
@@ -130,6 +142,24 @@ export default function App() {
     setToastMessage(message);
     setTimeout(() => setToastMessage(null), 3000);
   };
+
+  // Parse query parameters for prefilling login from invitation links
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const emailParam = params.get('email');
+    const tempPassParam = params.get('tempPass');
+    if (emailParam) setLoginEmail(emailParam);
+    if (tempPassParam) setLoginPassword(tempPassParam);
+  }, []);
+
+  // Sync setup fields with currentUser once authenticated
+  useEffect(() => {
+    if (currentUser) {
+      setSetupPhone(currentUser.phone || '');
+      setSetupTalla(currentUser.talla || 'M');
+      setSetupDieta(currentUser.dieta || 'OMNIVORA');
+    }
+  }, [currentUser]);
 
   // Check auth persistence
   useEffect(() => {
@@ -170,6 +200,52 @@ export default function App() {
       autoLogin();
     }
   }, []);
+
+  const handleSetupSubmit = async (e) => {
+    e.preventDefault();
+    if (setupNewPassword !== setupConfirmPassword) {
+      setSetupError('Las contraseñas nuevas no coinciden.');
+      return;
+    }
+    if (!setupDisclaimerAccepted || !setupTcAccepted) {
+      setSetupError('Debes aceptar los términos y condiciones.');
+      return;
+    }
+    setSetupSaving(true);
+    setSetupError('');
+    try {
+      const res = await apiFetch('updateProfile', {
+        email: currentUser.email,
+        phone: setupPhone,
+        talla: setupTalla,
+        dieta: setupDieta,
+        newPassword: setupNewPassword,
+        oldPassword: loginPassword || window.localStorage.getItem('artist_gest_pass') || ''
+      });
+      if (res.status === 'success') {
+        const updatedUser = {
+          ...currentUser,
+          phone: setupPhone,
+          talla: setupTalla,
+          dieta: setupDieta,
+          isTempPass: false,
+          acceptedTerms: true
+        };
+        setCurrentUser(updatedUser);
+        window.localStorage.setItem('artist_gest_user', JSON.stringify(updatedUser));
+        if (setupNewPassword) {
+          window.localStorage.setItem('artist_gest_pass', setupNewPassword);
+        }
+        showToast('¡Cuenta activada con éxito!');
+        fetchProjects();
+      } else {
+        setSetupError(res.message || 'Error al actualizar el perfil.');
+      }
+    } catch(err) {
+      setSetupError('Error de red al activar la cuenta.');
+    }
+    setSetupSaving(false);
+  };
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -489,7 +565,156 @@ export default function App() {
           <span>{toastMessage}</span>
         </div>
       )}
+      {isAuthenticated && (currentUser?.isTempPass || !currentUser?.acceptedTerms) && (
+        <div className="fixed inset-0 bg-slate-950/95 backdrop-blur-md z-[200] flex items-center justify-center p-4 overflow-y-auto custom-scrollbar">
+          <div className="w-full max-w-xl bg-slate-900 border border-slate-800 rounded-2xl p-5 md:p-7 shadow-2xl animate-slide-up my-8 text-left">
+            
+            <div className="flex items-center gap-3 border-b border-slate-800 pb-3 mb-4 text-emerald-500">
+              <ShieldCheck size={28} className="shrink-0" />
+              <h2 className="text-lg md:text-xl font-black text-white uppercase tracking-wider">Activa tu Cuenta de Artista</h2>
+            </div>
 
+            <p className="text-xs md:text-sm text-slate-300 leading-relaxed mb-4">
+              Hola <b>{currentUser?.name}</b>, te damos la bienvenida a <b>Artist-Gest</b>. Para activar tu cuenta, debes establecer tu contraseña definitiva y aceptar el aviso de tratamiento de datos personales y sensibles de Esquemas Pro.
+            </p>
+
+            {setupError && (
+              <div className="bg-red-500/10 border border-red-500/50 text-red-400 text-xs p-3 rounded-lg flex items-center gap-2 mb-4">
+                <AlertCircle size={16} className="shrink-0" />
+                <span>{setupError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleSetupSubmit} className="space-y-4">
+              
+              {/* password fields */}
+              <div className="bg-slate-950 p-4 rounded-xl border border-slate-850 space-y-3.5">
+                <span className="text-[10px] font-black uppercase text-slate-500 tracking-wider block border-b border-slate-900 pb-1.5">1. Establecer Nueva Contraseña</span>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[9px] font-bold text-slate-400 mb-1 uppercase">Nueva Contraseña</label>
+                    <input 
+                      type="password" 
+                      value={setupNewPassword} 
+                      onChange={e=>setSetupNewPassword(e.target.value)} 
+                      className="w-full bg-slate-900 border border-slate-800 focus:border-emerald-500 rounded p-2 text-xs text-white outline-none font-mono" 
+                      placeholder="••••••••" 
+                      required 
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[9px] font-bold text-slate-400 mb-1 uppercase">Confirmar Contraseña</label>
+                    <input 
+                      type="password" 
+                      value={setupConfirmPassword} 
+                      onChange={e=>setSetupConfirmPassword(e.target.value)} 
+                      className="w-full bg-slate-900 border border-slate-800 focus:border-emerald-500 rounded p-2 text-xs text-white outline-none font-mono" 
+                      placeholder="••••••••" 
+                      required 
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* profile completion fields */}
+              <div className="bg-slate-950 p-4 rounded-xl border border-slate-850 space-y-3.5">
+                <span className="text-[10px] font-black uppercase text-slate-500 tracking-wider block border-b border-slate-900 pb-1.5">2. Completar Datos Personales y de Ficha</span>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="sm:col-span-1">
+                    <label className="block text-[9px] font-bold text-slate-400 mb-1 uppercase">Teléfono Movil</label>
+                    <input 
+                      type="tel" 
+                      value={setupPhone} 
+                      onChange={e=>setSetupPhone(e.target.value.replace(/[^0-9+]/g, ''))} 
+                      className="w-full bg-slate-900 border border-slate-800 focus:border-emerald-500 rounded p-2 text-xs text-white outline-none" 
+                      required 
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[9px] font-bold text-slate-400 mb-1 uppercase">Talla Vestuario</label>
+                    <select 
+                      value={setupTalla} 
+                      onChange={e=>setSetupTalla(e.target.value)} 
+                      className="w-full bg-slate-900 border border-slate-800 focus:border-emerald-500 rounded p-2 text-xs text-white outline-none animate-fade-in"
+                    >
+                      <option value="S">Talla S</option>
+                      <option value="M">Talla M</option>
+                      <option value="L">Talla L</option>
+                      <option value="XL">Talla XL</option>
+                      <option value="XXL">Talla XXL</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[9px] font-bold text-slate-400 mb-1 uppercase">Tipo de Dieta</label>
+                    <select 
+                      value={setupDieta} 
+                      onChange={e=>setSetupDieta(e.target.value)} 
+                      className="w-full bg-slate-900 border border-slate-800 focus:border-emerald-500 rounded p-2 text-xs text-white outline-none animate-fade-in"
+                    >
+                      <option value="OMNIVORA">OMNÍVORA</option>
+                      <option value="VEGETARIANA">VEGETARIANA</option>
+                      <option value="VEGANA">VEGANA</option>
+                      <option value="CELIACA">CELÍACA</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* terms acceptance check */}
+              <div className="bg-slate-950 p-4 rounded-xl border border-slate-850 space-y-3">
+                <span className="text-[10px] font-black uppercase text-slate-500 tracking-wider block border-b border-slate-900 pb-1">3. Políticas de Privacidad y Tratamiento de Datos</span>
+                
+                <div className="bg-slate-900 border border-slate-850 rounded p-2.5 text-[10px] text-slate-400 max-h-24 overflow-y-auto custom-scrollbar leading-relaxed">
+                  <p className="font-bold text-slate-300 mb-0.5">AVISO DE TRATAMIENTO DE DATOS PERSONALES</p>
+                  Para la operatividad en giras y shows, recopilamos tu nombre, correo, teléfono (coordinación directa y WhatsApp), talla de vestimenta (para uniformes y merch) y restricciones alimenticias (para catering). Estos datos serán tratados con total seguridad y confidencialidad.
+                </div>
+
+                <div className="space-y-2 pt-1 text-[11px] text-slate-300">
+                  <label className="flex items-start gap-2 cursor-pointer select-none">
+                    <input 
+                      type="checkbox" 
+                      checked={setupDisclaimerAccepted} 
+                      onChange={e => setSetupDisclaimerAccepted(e.target.checked)} 
+                      className="accent-emerald-500 rounded bg-slate-900 border-slate-700 mt-0.5" 
+                      required 
+                    />
+                    <span>Acepto el tratamiento de mis datos personales y de ficha para logística.</span>
+                  </label>
+                  <label className="flex items-start gap-2 cursor-pointer select-none">
+                    <input 
+                      type="checkbox" 
+                      checked={setupTcAccepted} 
+                      onChange={e => setSetupTcAccepted(e.target.checked)} 
+                      className="accent-emerald-500 rounded bg-slate-900 border-slate-700 mt-0.5" 
+                      required 
+                    />
+                    <span>He leído y acepto los Términos y Condiciones y la Política de Privacidad de la plataforma.</span>
+                  </label>
+                </div>
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <Button 
+                  variant="ghost" 
+                  className="flex-1 bg-slate-800 py-2.5 text-xs font-bold text-slate-400 hover:text-red-400" 
+                  onClick={handleLogout}
+                >
+                  Cancelar / Salir
+                </Button>
+                <Button 
+                  type="submit" 
+                  variant="primary" 
+                  className="flex-[2] py-2.5 text-xs font-bold uppercase tracking-wider" 
+                  disabled={setupSaving}
+                >
+                  {setupSaving ? 'Guardando...' : 'Aceptar y Activar Cuenta'}
+                </Button>
+              </div>
+
+            </form>
+          </div>
+        </div>
+      )}
       {/* Header bar */}
       <header className="bg-slate-900/80 backdrop-blur-md border-b border-slate-800 p-4 sticky top-0 z-50 flex items-center justify-between">
         <div className="flex items-center gap-2">
