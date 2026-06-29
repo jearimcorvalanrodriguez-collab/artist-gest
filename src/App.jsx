@@ -1262,9 +1262,8 @@ export default function App() {
                                     
                                     if (isNote) {
                                       return (
-                                        <tr key={idx} className="border-b border-slate-200">
-                                          <td className="w-8 border-r border-slate-200 bg-amber-500 text-center text-white font-bold"></td>
-                                          <td colSpan={4} className="p-2 text-xs font-semibold text-slate-800 italic bg-amber-500/5">
+                                        <tr key={idx} className="border-b border-slate-200 bg-amber-500/5">
+                                          <td colSpan={5} className="p-2.5 text-xs font-semibold text-slate-800 italic border-l-4 border-l-amber-500">
                                             {item.song}
                                           </td>
                                         </tr>
