@@ -85,10 +85,26 @@ const Button = ({ children, onClick, type = 'button', variant = 'primary', class
 // --- API FETCH HELPER ---
 const apiFetch = async (action, payload = {}) => {
   const url = import.meta.env.VITE_GAS_URL || 'https://script.google.com/macros/s/AKfycbwNXxsCfNlOV-JkeUO2Sl55SquzwcrwP50ZpfSUyeg-mI1ugvtCw-1E1mLF-2OS5tmAEw/exec';
+  
+  // Extract active user email from localStorage
+  const storedUser = window.localStorage.getItem('artist_gest_user');
+  let requesterEmail = null;
+  if (storedUser) {
+    try {
+      const parsed = JSON.parse(storedUser);
+      if (parsed && parsed.email) requesterEmail = parsed.email;
+    } catch (e) {}
+  }
+
+  const securePayload = { ...payload };
+  if (requesterEmail && !securePayload.requesterEmail) {
+    securePayload.requesterEmail = requesterEmail;
+  }
+
   const response = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify({ app_secret: ESQUEMAS_MASTER_SECRET, action, payload })
+    body: JSON.stringify({ app_secret: ESQUEMAS_MASTER_SECRET, action, payload: securePayload })
   });
   return response.json();
 };
