@@ -368,36 +368,7 @@ export default function App() {
     setActiveShow(null);
     setLoading(true);
 
-    if (project.id === 'INDEPENDENT') {
-      try {
-        const localShows = localStorage.getItem('independent_shows');
-        const parsed = localShows ? JSON.parse(localShows) : [];
-        if (parsed.length > 0) {
-          setShows(parsed);
-          setActiveShow(parsed[0]);
-        } else {
-          const defaultShow = {
-            name: 'Mi Primer Show',
-            date: new Date().toISOString().split('T')[0],
-            notes: '',
-            setlist: []
-          };
-          setShows([defaultShow]);
-          setActiveShow(defaultShow);
-        }
-      } catch (e) {
-        const defaultShow = {
-          name: 'Mi Primer Show',
-          date: new Date().toISOString().split('T')[0],
-          notes: '',
-          setlist: []
-        };
-        setShows([defaultShow]);
-        setActiveShow(defaultShow);
-      }
-      setLoading(false);
-      return;
-    }
+
 
     try {
       const res = await apiFetch('getRiders');
@@ -568,24 +539,7 @@ export default function App() {
     if (!selectedProject || !activeShow) return;
     setLoading(true);
 
-    if (selectedProject.id === 'INDEPENDENT') {
-      try {
-        const updatedShows = shows.map(s => {
-          // If match by date and name, or if it's the current active show
-          if (s.name === activeShow.name && s.date === activeShow.date) {
-            return activeShow;
-          }
-          return s;
-        });
-        localStorage.setItem('independent_shows', JSON.stringify(updatedShows));
-        setShows(updatedShows);
-        showToast('Show guardado en memoria local.');
-      } catch (e) {
-        showToast('Error al guardar localmente.');
-      }
-      setLoading(false);
-      return;
-    }
+
 
     try {
       // Map show structure into standard Crew Rider format
@@ -652,25 +606,7 @@ export default function App() {
   };
 
   const handleDeleteShow = async (show) => {
-    if (selectedProject?.id === 'INDEPENDENT') {
-      const updated = shows.filter(s => !(s.name === show.name && s.date === show.date));
-      localStorage.setItem('independent_shows', JSON.stringify(updated));
-      setShows(updated);
-      if (updated.length > 0) {
-        setActiveShow(updated[0]);
-      } else {
-        const defaultShow = {
-          name: 'Mi Primer Show',
-          date: new Date().toISOString().split('T')[0],
-          notes: '',
-          setlist: []
-        };
-        setShows([defaultShow]);
-        setActiveShow(defaultShow);
-      }
-      showToast('Show eliminado de memoria local.');
-      return;
-    }
+
 
     if (!show.riderId) {
       // Just remove from local list if not saved to Sheets
@@ -1309,6 +1245,34 @@ export default function App() {
                     </select>
                   </div>
 
+                  {shows.length > 0 && (
+                    <div className="mt-3 border-t border-slate-800/80 pt-3 space-y-2 text-left">
+                      <p className="text-[10px] text-slate-500 font-black uppercase tracking-wider">Acceso Rápido a Setlists</p>
+                      <div className="space-y-1 max-h-[180px] overflow-y-auto custom-scrollbar pr-1">
+                        {shows.map((show, idx) => {
+                          const isActive = activeShow && activeShow.name === show.name && activeShow.date === show.date;
+                          return (
+                            <button
+                              key={idx}
+                              type="button"
+                              onClick={() => setActiveShow(show)}
+                              className={`w-full flex items-center justify-between text-left px-2.5 py-2 rounded-lg text-xs transition-all duration-150 border ${
+                                isActive 
+                                  ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 font-bold shadow-md shadow-emerald-950/20' 
+                                  : 'text-slate-400 hover:text-white bg-slate-950/40 border-transparent hover:bg-slate-850/50'
+                              }`}
+                            >
+                              <span className="truncate flex-1 font-bold">{show.name}</span>
+                              <span className="font-mono text-[9px] text-slate-500 bg-slate-900 px-1.5 py-0.5 rounded border border-slate-800/80 shrink-0 ml-2">
+                                {show.date.split('-').reverse().slice(0, 2).join('/')}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
                   {/* Floating Show Settings Popover (Ajustes del Show) */}
                   {activeShow && showSettingsDropdown && (
                     <div className="absolute left-full top-0 ml-3 z-50 w-72 bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-2xl space-y-3 animate-fadeIn text-left">
@@ -1448,18 +1412,20 @@ export default function App() {
                           </label>
                         </div>
 
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
-                          <Button type="submit" variant="blue" className="w-full py-2 text-xs font-bold" icon={Plus}>
-                            Insertar Canción
-                          </Button>
-                          <Button 
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+                          <button 
+                            type="submit" 
+                            className="w-full py-2.5 px-4 text-xs font-black uppercase tracking-wider text-white bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-emerald-950/30 transition-all duration-150 active:scale-[0.98] cursor-pointer"
+                          >
+                            <Plus size={14} className="stroke-[3]" /> Insertar Canción
+                          </button>
+                          <button 
                             type="button" 
                             onClick={handleAddNote}
-                            className="w-full py-2 text-xs font-bold bg-amber-600 hover:bg-amber-500 border-amber-600" 
-                            icon={Plus}
+                            className="w-full py-2.5 px-4 text-xs font-black uppercase tracking-wider text-white bg-gradient-to-r from-amber-600 to-yellow-500 hover:from-amber-500 hover:to-yellow-400 rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-amber-950/30 transition-all duration-150 active:scale-[0.98] cursor-pointer"
                           >
-                            Insertar Nota / Intermedio
-                          </Button>
+                            <Plus size={14} className="stroke-[3]" /> Insertar Nota / Intermedio
+                          </button>
                         </div>
                       </form>
                     </Card>
