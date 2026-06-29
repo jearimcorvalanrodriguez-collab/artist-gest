@@ -15,7 +15,9 @@ import {
   ArrowDown, 
   Edit3,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  LogOut,
+  User
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
@@ -93,6 +95,21 @@ export default function App() {
   const [loginPassword, setLoginPassword] = useState('');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [loginError, setLoginError] = useState('');
+  const [currentUser, setCurrentUser] = useState(null);
+  const [acceptedTermsCheckbox, setAcceptedTermsCheckbox] = useState(false);
+  
+  // Modals and Recovery States
+  const [showRecoverModal, setShowRecoverModal] = useState(false);
+  const [recoverEmail, setRecoverEmail] = useState('');
+  const [recoverMessage, setRecoverMessage] = useState('');
+  const [recoverError, setRecoverError] = useState('');
+  
+  const [showProfileModal, setShowProfileModal] = useState(false);
+  const [profilePhone, setProfilePhone] = useState('');
+  const [profileOldPassword, setProfileOldPassword] = useState('');
+  const [profileNewPassword, setProfileNewPassword] = useState('');
+  const [profileConfirmPassword, setProfileConfirmPassword] = useState('');
+  const [profileError, setProfileError] = useState('');
 
   const [projects, setProjects] = useState([]);
   const [selectedProject, setSelectedProject] = useState(null);
@@ -119,6 +136,13 @@ export default function App() {
     const savedAuth = window.localStorage.getItem('artist_gest_auth');
     const savedEmail = window.localStorage.getItem('artist_gest_email');
     const savedPass = window.localStorage.getItem('artist_gest_pass');
+    const savedUser = window.localStorage.getItem('artist_gest_user');
+
+    if (savedUser) {
+      try {
+        setCurrentUser(JSON.parse(savedUser));
+      } catch (e) {}
+    }
 
     const autoLogin = async () => {
       setLoading(true);
@@ -126,6 +150,8 @@ export default function App() {
         const res = await apiFetch('login', { email: savedEmail, password: savedPass });
         if (res.status === 'success') {
           setIsAuthenticated(true);
+          setCurrentUser(res.user);
+          window.localStorage.setItem('artist_gest_user', JSON.stringify(res.user));
           // Directly load projects
           const projRes = await apiFetch('getProyectos');
           if (projRes.status === 'success') {
@@ -150,7 +176,11 @@ export default function App() {
     setLoading(true);
     setLoginError('');
     try {
-      const res = await apiFetch('login', { email: loginEmail, password: loginPassword });
+      const res = await apiFetch('login', { 
+        email: loginEmail, 
+        password: loginPassword,
+        acceptedTerms: acceptedTermsCheckbox 
+      });
       if (res.status === 'success') {
         const user = res.user;
         const allowedRoles = ['ADMIN', 'MANAGER', 'TOUR_MANAGER', 'ARTISTA', 'PRODUCCION'];
@@ -159,9 +189,11 @@ export default function App() {
         
         if (isAllowed) {
           setIsAuthenticated(true);
+          setCurrentUser(user);
           window.localStorage.setItem('artist_gest_auth', 'true');
           window.localStorage.setItem('artist_gest_email', loginEmail);
           window.localStorage.setItem('artist_gest_pass', loginPassword);
+          window.localStorage.setItem('artist_gest_user', JSON.stringify(user));
           setLoginError('');
           showToast(`Bienvenido, ${user.name}`);
           
@@ -187,13 +219,16 @@ export default function App() {
     window.localStorage.removeItem('artist_gest_auth');
     window.localStorage.removeItem('artist_gest_email');
     window.localStorage.removeItem('artist_gest_pass');
+    window.localStorage.removeItem('artist_gest_user');
     setIsAuthenticated(false);
+    setCurrentUser(null);
     setProjects([]);
     setSelectedProject(null);
     setShows([]);
     setActiveShow(null);
     setLoginEmail('');
     setLoginPassword('');
+    setAcceptedTermsCheckbox(false);
   };
 
   const fetchProjects = async () => {
@@ -462,11 +497,49 @@ export default function App() {
           <h1 className="text-lg font-black tracking-wider text-white">ARTIST-GEST</h1>
         </div>
         {isAuthenticated && (
-          <Button variant="ghost" onClick={handleLogout} className="p-2 border border-slate-800 rounded-lg text-red-400" title="Cerrar Sesión">
-            <LogOut size={16} />
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button 
+              variant="secondary" 
+              onClick={() => {
+                setProfilePhone(currentUser?.phone || '');
+                setProfileOldPassword('');
+                setProfileNewPassword('');
+                setProfileConfirmPassword('');
+                setProfileError('');
+                setShowProfileModal(true);
+              }} 
+              className="py-1.5 px-3 border-slate-700 text-xs font-bold"
+              icon={User}
+            >
+              Mi Perfil
+            </Button>
+            <Button variant="ghost" onClick={handleLogout} className="p-2 border border-slate-800 rounded-lg text-red-400" title="Cerrar Sesión">
+              <LogOut size={16} />
+            </Button>
+          </div>
         )}
       </header>
+
+      {/* Temporary Password Banner */}
+      {isAuthenticated && currentUser?.isTempPass && (
+        <div className="bg-amber-500 text-slate-950 px-4 py-2.5 text-center text-xs font-bold flex items-center justify-center gap-2 animate-pulse shadow-md">
+          <AlertCircle size={16} className="shrink-0" />
+          <span>Estás usando una contraseña temporal. Por seguridad, por favor actualízala en la sección "Mi Perfil" a la brevedad.</span>
+          <button 
+            onClick={() => {
+              setProfilePhone(currentUser?.phone || '');
+              setProfileOldPassword('');
+              setProfileNewPassword('');
+              setProfileConfirmPassword('');
+              setProfileError('');
+              setShowProfileModal(true);
+            }} 
+            className="underline ml-2 hover:text-slate-900 transition-colors font-black cursor-pointer"
+          >
+            Ir a Mi Perfil
+          </button>
+        </div>
+      )}
 
       {/* Main App Layout */}
       <main className="flex-1 w-full max-w-7xl mx-auto p-4 flex flex-col lg:flex-row gap-6 justify-center items-stretch">
@@ -518,6 +591,37 @@ export default function App() {
                     required 
                   />
                 </div>
+                
+                {/* Use of Information Policy Checkbox */}
+                <div className="flex items-start gap-2 pt-1">
+                  <input 
+                    type="checkbox" 
+                    id="acceptTerms"
+                    checked={acceptedTermsCheckbox} 
+                    onChange={e => setAcceptedTermsCheckbox(e.target.checked)} 
+                    className="mt-0.5 w-3.5 h-3.5 bg-slate-950 border border-slate-800 rounded text-emerald-600 focus:ring-emerald-500 focus:ring-offset-slate-950 accent-emerald-500 cursor-pointer shrink-0" 
+                    required 
+                  />
+                  <label htmlFor="acceptTerms" className="text-[10px] text-slate-400 cursor-pointer leading-tight selection:bg-transparent">
+                    Acepto el uso y tratamiento de mi información personal conforme a las políticas de privacidad.
+                  </label>
+                </div>
+
+                <div className="flex items-center justify-between text-[11px] pt-1">
+                  <button 
+                    type="button" 
+                    onClick={() => {
+                      setRecoverEmail('');
+                      setRecoverMessage('');
+                      setRecoverError('');
+                      setShowRecoverModal(true);
+                    }}
+                    className="text-emerald-500 hover:underline cursor-pointer font-bold"
+                  >
+                    ¿Olvidaste tu contraseña?
+                  </button>
+                </div>
+
                 <Button type="submit" className="w-full py-3" disabled={loading} icon={Lock}>
                   {loading ? 'Iniciando Sesión...' : 'Iniciar Sesión'}
                 </Button>
@@ -843,6 +947,264 @@ export default function App() {
         © 2026 Artist-Gest Logistics Engine
       </footer>
 
+      {/* --- PROFILE MODAL --- */}
+      {showProfileModal && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-[200] flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-xl max-w-md w-full p-6 shadow-2xl animate-scale-up">
+            <div className="flex items-center justify-between mb-4 border-b border-slate-800 pb-3">
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <User size={18} className="text-emerald-500" />
+                Mi Perfil
+              </h3>
+              <button 
+                onClick={() => setShowProfileModal(false)}
+                className="text-slate-400 hover:text-white"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 mb-1 uppercase tracking-wider">Nombre</label>
+                <input 
+                  type="text" 
+                  value={currentUser?.name || ''} 
+                  disabled 
+                  className="w-full bg-slate-950 border border-slate-850 rounded-lg p-2 text-xs text-slate-400 cursor-not-allowed outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 mb-1 uppercase tracking-wider">Email</label>
+                <input 
+                  type="text" 
+                  value={currentUser?.email || ''} 
+                  disabled 
+                  className="w-full bg-slate-950 border border-slate-850 rounded-lg p-2 text-xs text-slate-400 cursor-not-allowed outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 mb-1 uppercase tracking-wider">Teléfono</label>
+                <input 
+                  type="text" 
+                  value={profilePhone} 
+                  onChange={e => setProfilePhone(e.target.value)} 
+                  className="w-full bg-slate-950 border border-slate-800 focus:border-emerald-500 rounded-lg p-2 text-xs text-white outline-none transition-colors"
+                  placeholder="+56912345678"
+                />
+              </div>
+
+              <div className="border-t border-slate-800 pt-3">
+                <h4 className="text-xs font-bold text-slate-300 mb-2 uppercase tracking-wide">Cambiar Contraseña</h4>
+                {profileError && (
+                  <div className="bg-red-500/10 border border-red-500/50 text-red-400 text-[11px] p-2.5 rounded-lg mb-3 flex items-center gap-2">
+                    <AlertCircle size={14} className="shrink-0" />
+                    <span>{profileError}</span>
+                  </div>
+                )}
+                
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-[9px] font-bold text-slate-400 mb-1 uppercase tracking-wider">Contraseña Actual</label>
+                    <input 
+                      type="password" 
+                      value={profileOldPassword} 
+                      onChange={e => setProfileOldPassword(e.target.value)} 
+                      className="w-full bg-slate-950 border border-slate-800 focus:border-emerald-500 rounded-lg p-2 text-xs text-white outline-none transition-colors font-mono"
+                      placeholder="••••••••"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[9px] font-bold text-slate-400 mb-1 uppercase tracking-wider">Nueva Contraseña</label>
+                    <input 
+                      type="password" 
+                      value={profileNewPassword} 
+                      onChange={e => setProfileNewPassword(e.target.value)} 
+                      className="w-full bg-slate-950 border border-slate-800 focus:border-emerald-500 rounded-lg p-2 text-xs text-white outline-none transition-colors font-mono"
+                      placeholder="••••••••"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[9px] font-bold text-slate-400 mb-1 uppercase tracking-wider">Confirmar Nueva Contraseña</label>
+                    <input 
+                      type="password" 
+                      value={profileConfirmPassword} 
+                      onChange={e => setProfileConfirmPassword(e.target.value)} 
+                      className="w-full bg-slate-950 border border-slate-800 focus:border-emerald-500 rounded-lg p-2 text-xs text-white outline-none transition-colors font-mono"
+                      placeholder="••••••••"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 mt-6 border-t border-slate-800 pt-3">
+              <Button variant="secondary" onClick={() => setShowProfileModal(false)}>
+                Cancelar
+              </Button>
+              <Button 
+                onClick={async () => {
+                  setProfileError('');
+                  if (profileNewPassword || profileOldPassword) {
+                    if (!profileOldPassword) {
+                      setProfileError('Debes ingresar tu contraseña actual.');
+                      return;
+                    }
+                    if (profileNewPassword.length < 6) {
+                      setProfileError('La nueva contraseña debe tener al menos 6 caracteres.');
+                      return;
+                    }
+                    if (profileNewPassword !== profileConfirmPassword) {
+                      setProfileError('Las nuevas contraseñas no coinciden.');
+                      return;
+                    }
+                  }
+                  
+                  setLoading(true);
+                  try {
+                    const res = await apiFetch('updateProfile', {
+                      email: currentUser.email,
+                      phone: profilePhone,
+                      talla: currentUser.talla,
+                      dieta: currentUser.dieta,
+                      oldPassword: profileOldPassword || undefined,
+                      newPassword: profileNewPassword || undefined
+                    });
+                    
+                    if (res.status === 'success') {
+                      showToast('Perfil actualizado con éxito.');
+                      
+                      // Update current user details
+                      const updatedUser = { 
+                        ...currentUser, 
+                        phone: profilePhone,
+                        isTempPass: (profileNewPassword && profileOldPassword) ? false : currentUser.isTempPass 
+                      };
+                      setCurrentUser(updatedUser);
+                      window.localStorage.setItem('artist_gest_user', JSON.stringify(updatedUser));
+                      
+                      // If password changed, update saved credentials
+                      if (profileNewPassword && profileOldPassword) {
+                        window.localStorage.setItem('artist_gest_pass', profileNewPassword);
+                      }
+                      
+                      setShowProfileModal(false);
+                    } else {
+                      setProfileError(res.message || 'Error al actualizar el perfil.');
+                    }
+                  } catch (err) {
+                    setProfileError('Error de conexión con el servidor.');
+                  }
+                  setLoading(false);
+                }}
+                disabled={loading}
+              >
+                Guardar Cambios
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- RECOVER PASSWORD MODAL --- */}
+      {showRecoverModal && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-[200] flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-xl max-w-sm w-full p-6 shadow-2xl animate-scale-up">
+            <div className="flex items-center justify-between mb-4 border-b border-slate-800 pb-3">
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <Lock size={18} className="text-emerald-500" />
+                Recuperar Contraseña
+              </h3>
+              <button 
+                onClick={() => {
+                  setShowRecoverModal(false);
+                  setRecoverEmail('');
+                  setRecoverMessage('');
+                  setRecoverError('');
+                }}
+                className="text-slate-400 hover:text-white"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <p className="text-xs text-slate-400">
+                Ingresa tu correo electrónico registrado. Si coincide con una cuenta activa, te enviaremos un token temporal para que puedas volver a ingresar.
+              </p>
+
+              {recoverMessage && (
+                <div className="bg-emerald-500/10 border border-emerald-500/50 text-emerald-400 text-xs p-3 rounded-lg flex items-center gap-2.5">
+                  <CheckCircle2 size={16} className="shrink-0" />
+                  <span>{recoverMessage}</span>
+                </div>
+              )}
+
+              {recoverError && (
+                <div className="bg-red-500/10 border border-red-500/50 text-red-400 text-xs p-3 rounded-lg flex items-center gap-2.5">
+                  <AlertCircle size={16} className="shrink-0" />
+                  <span>{recoverError}</span>
+                </div>
+              )}
+
+              {!recoverMessage && (
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 mb-1.5 uppercase tracking-wider">Correo Electrónico</label>
+                  <input 
+                    type="email" 
+                    value={recoverEmail} 
+                    onChange={e => setRecoverEmail(e.target.value)} 
+                    className="w-full bg-slate-950 border border-slate-800 focus:border-emerald-500 rounded-lg p-2.5 text-xs text-white outline-none transition-colors"
+                    placeholder="nombre@correo.com"
+                    required
+                  />
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-end gap-3 mt-6 border-t border-slate-800 pt-3">
+              <Button 
+                variant="secondary" 
+                onClick={() => {
+                  setShowRecoverModal(false);
+                  setRecoverEmail('');
+                  setRecoverMessage('');
+                  setRecoverError('');
+                }}
+              >
+                Cerrar
+              </Button>
+              {!recoverMessage && (
+                <Button 
+                  onClick={async () => {
+                    setRecoverError('');
+                    setRecoverMessage('');
+                    if (!recoverEmail) {
+                      setRecoverError('Por favor ingresa tu correo electrónico.');
+                      return;
+                    }
+                    setLoading(true);
+                    try {
+                      const res = await apiFetch('recuperarClave', { email: recoverEmail });
+                      if (res.status === 'success') {
+                        setRecoverMessage(res.message || 'Se ha enviado un token temporal a tu correo electrónico.');
+                      } else {
+                        setRecoverError(res.message || 'No se pudo procesar la solicitud.');
+                      }
+                    } catch (err) {
+                      setRecoverError('Error de conexión con el servidor.');
+                    }
+                    setLoading(false);
+                  }}
+                  disabled={loading}
+                >
+                  Enviar Instrucciones
+                </Button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
