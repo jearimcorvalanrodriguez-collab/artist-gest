@@ -698,41 +698,221 @@ export default function App() {
 
   const downloadPDF = () => {
     if (!activeShow) return;
-    const element = pdfRef.current;
-    showToast('Generando PDF del Setlist...');
-    
-    const opt = {
-      margin: 10,
-      filename: `Setlist_${activeShow.name.replace(/\s+/g, '_')}.pdf`,
-      image: { type: 'jpeg', quality: 0.98 },
-      html2canvas: { scale: 2, useCORS: true },
-      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-    };
+    showToast('Generando PDF nativo...');
 
-    html2canvas(element, opt.html2canvas).then((canvas) => {
-      const imgData = canvas.toDataURL('image/jpeg');
-      const pdf = new jsPDF(opt.jsPDF);
-      const imgWidth = 210 - (opt.margin * 2);
+    try {
+      const pdf = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4'
+      });
+
+      const pageWidth = 210;
       const pageHeight = 297;
-      const imgHeight = (canvas.height * imgWidth) / canvas.width;
-      let heightLeft = imgHeight;
-      let position = opt.margin;
+      const margin = 15;
+      const contentWidth = pageWidth - (margin * 2);
+      
+      let y = margin;
 
-      pdf.addImage(imgData, 'JPEG', opt.margin, position, imgWidth, imgHeight);
-      heightLeft -= pageHeight;
+      // Helper function to draw header on each page
+      const drawHeader = () => {
+        pdf.setFont('helvetica', 'bold');
+        pdf.setFontSize(18);
+        pdf.setTextColor(15, 23, 42); // slate-900
+        pdf.text('SETLIST DE SHOW', margin, y);
+        
+        pdf.setFontSize(8);
+        pdf.setFont('helvetica', 'normal');
+        pdf.setTextColor(100, 116, 139); // slate-500
+        pdf.text('GENERADO CON ARTIST-GEST CO-LOGISTICS', margin, y + 4);
 
-      while (heightLeft >= 0) {
-        position = heightLeft - imgHeight + opt.margin;
-        pdf.addPage();
-        pdf.addImage(imgData, 'JPEG', opt.margin, position, imgWidth, imgHeight);
-        heightLeft -= pageHeight;
+        // Right-aligned show info
+        pdf.setFont('helvetica', 'bold');
+        pdf.setFontSize(10);
+        pdf.setTextColor(15, 23, 42);
+        const dateStr = activeShow.date.split('-').reverse().join('/');
+        pdf.text(dateStr, pageWidth - margin, y, { align: 'right' });
+
+        pdf.setFont('helvetica', 'normal');
+        pdf.setFontSize(8);
+        pdf.setTextColor(71, 85, 105);
+        pdf.text(activeShow.name, pageWidth - margin, y + 4, { align: 'right' });
+
+        y += 9;
+
+        // Draw line
+        pdf.setDrawColor(226, 232, 240); // slate-200
+        pdf.setLineWidth(0.4);
+        pdf.line(margin, y, pageWidth - margin, y);
+        y += 6;
+
+        // Draw Project Info
+        pdf.setFont('helvetica', 'bold');
+        pdf.setFontSize(10);
+        pdf.setTextColor(15, 23, 42);
+        pdf.text(`Artista / Proyecto: ${selectedProject.name}`, margin, y);
+        y += 5;
+      };
+
+      // Initial header
+      drawHeader();
+
+      // Show Notes if present
+      if (activeShow.notes) {
+        pdf.setFont('helvetica', 'normal');
+        pdf.setFontSize(8.5);
+        
+        const splitNotes = pdf.splitTextToSize(activeShow.notes, contentWidth - 6);
+        const notesHeight = (splitNotes.length * 3.8) + 6;
+
+        // Check if there is enough space on this page
+        if (y + notesHeight > pageHeight - margin) {
+          pdf.addPage();
+          y = margin;
+          drawHeader();
+        }
+
+        // Draw note background box
+        pdf.setFillColor(248, 250, 252); // slate-50
+        pdf.setDrawColor(226, 232, 240);
+        pdf.roundedRect(margin, y, contentWidth, notesHeight, 1.5, 1.5, 'FD');
+        
+        pdf.setTextColor(51, 65, 85);
+        pdf.setFont('helvetica', 'bold');
+        pdf.setFontSize(7.5);
+        pdf.text('ANOTACIONES GENERALES:', margin + 3, y + 4);
+        
+        pdf.setFont('helvetica', 'normal');
+        pdf.setFontSize(8.5);
+        pdf.setTextColor(15, 23, 42);
+        
+        let noteY = y + 8;
+        splitNotes.forEach(line => {
+          pdf.text(line, margin + 3, noteY);
+          noteY += 3.8;
+        });
+
+        y += notesHeight + 5;
       }
-      pdf.save(opt.filename);
-      showToast('PDF Descargado.');
-    }).catch(err => {
+
+      // Draw table headers
+      const drawTableHeaders = () => {
+        pdf.setFillColor(241, 245, 249); // slate-100
+        pdf.rect(margin, y, contentWidth, 7, 'F');
+        pdf.setDrawColor(203, 213, 225); // slate-300
+        pdf.line(margin, y, pageWidth - margin, y);
+        pdf.line(margin, y + 7, pageWidth - margin, y + 7);
+
+        pdf.setFont('helvetica', 'bold');
+        pdf.setFontSize(8);
+        pdf.setTextColor(71, 85, 105);
+
+        pdf.text('#', margin + 3, y + 4.5);
+        pdf.text('Canción / Tema', margin + 12, y + 4.5);
+        pdf.text('Tono', margin + 78, y + 4.5, { align: 'center' });
+        pdf.text('BPM', margin + 98, y + 4.5, { align: 'center' });
+        pdf.text('Observación de Interpretación', margin + 112, y + 4.5);
+        
+        y += 7;
+      };
+
+      drawTableHeaders();
+
+      let songCounter = 0;
+      activeShow.setlist.forEach((item, idx) => {
+        const isNote = item.type === 'note';
+        if (!isNote) songCounter++;
+
+        // Determine row height by splitting observation notes
+        const obsWidth = contentWidth - 112 - 3;
+        const splitObs = pdf.splitTextToSize(item.notes || 'Sin anotaciones', obsWidth);
+        const rowHeight = Math.max(7, (splitObs.length * 3.8) + 2);
+
+        // Check page overflow
+        if (y + rowHeight > pageHeight - margin - 15) {
+          // Draw page footer before adding page
+          pdf.setFont('helvetica', 'normal');
+          pdf.setFontSize(7.5);
+          pdf.setTextColor(148, 163, 184);
+          pdf.text('© 2026 ESQUEMAS PRO', margin, pageHeight - 10);
+          pdf.text('Página ' + pdf.getNumberOfPages(), pageWidth - margin - 20, pageHeight - 10);
+
+          pdf.addPage();
+          y = margin;
+          drawHeader();
+          y += 4;
+          drawTableHeaders();
+        }
+
+        // Draw alternating background row for note or normal
+        if (isNote) {
+          pdf.setFillColor(254, 243, 199); // amber-100
+          pdf.rect(margin, y, contentWidth, rowHeight, 'F');
+          
+          pdf.setFont('helvetica', 'bolditalic');
+          pdf.setFontSize(8.5);
+          pdf.setTextColor(180, 83, 9); // amber-700
+          pdf.text(`[COMENTARIO] ${item.song}`, margin + 5, y + 4.5);
+        } else {
+          if (idx % 2 === 0) {
+            pdf.setFillColor(255, 255, 255);
+          } else {
+            pdf.setFillColor(250, 250, 250);
+          }
+          pdf.rect(margin, y, contentWidth, rowHeight, 'F');
+
+          pdf.setFont('helvetica', 'bold');
+          pdf.setFontSize(8.5);
+          pdf.setTextColor(15, 23, 42);
+          pdf.text(String(songCounter), margin + 3, y + 4.5);
+
+          // Draw song title
+          let titleText = item.song;
+          if (item.connected) {
+            titleText += ' (Segue)';
+          }
+          pdf.text(titleText, margin + 12, y + 4.5);
+
+          // Draw Key & BPM
+          pdf.setFont('helvetica', 'bold');
+          pdf.setFontSize(8);
+          pdf.setTextColor(30, 41, 59);
+          pdf.text(item.key || 'N/A', margin + 78, y + 4.5, { align: 'center' });
+          pdf.text(String(item.bpm || 'N/A'), margin + 98, y + 4.5, { align: 'center' });
+
+          // Draw observation
+          pdf.setFont('helvetica', 'normal');
+          pdf.setFontSize(8);
+          pdf.setTextColor(71, 85, 105);
+          
+          let lineY = y + 4;
+          splitObs.forEach(line => {
+            pdf.text(line, margin + 112, lineY);
+            lineY += 3.8;
+          });
+        }
+
+        // Draw horizontal line after row
+        pdf.setDrawColor(241, 245, 249);
+        pdf.setLineWidth(0.2);
+        pdf.line(margin, y + rowHeight, pageWidth - margin, y + rowHeight);
+
+        y += rowHeight;
+      });
+
+      // Draw final page footer
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(7.5);
+      pdf.setTextColor(148, 163, 184);
+      pdf.text('© 2026 ESQUEMAS PRO', margin, pageHeight - 10);
+      pdf.text('Página ' + pdf.getNumberOfPages() + ' de ' + pdf.getNumberOfPages(), pageWidth - margin - 25, pageHeight - 10);
+
+      pdf.save(`Setlist_${activeShow.name.replace(/\s+/g, '_')}.pdf`);
+      showToast('PDF Descargado (Nativo Vectorial).');
+    } catch (err) {
       console.error(err);
       showToast('Error al generar el PDF.');
-    });
+    }
   };
 
   return (
