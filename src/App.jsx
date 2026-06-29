@@ -20,8 +20,7 @@ import {
   LogOut,
   User,
   ShieldCheck,
-  Link,
-  Settings
+  Link
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
@@ -155,8 +154,8 @@ export default function App() {
   const [newSongKey, setNewSongKey] = useState('');
   const [newSongBpm, setNewSongBpm] = useState('');
   const [newSongNotes, setNewSongNotes] = useState('');
+  const [addItemType, setAddItemType] = useState('song');
   const [newSongConnected, setNewSongConnected] = useState(false);
-  const [showSettingsDropdown, setShowSettingsDropdown] = useState(false);
 
   const showToast = (message) => {
     setToastMessage(message);
@@ -333,25 +332,7 @@ export default function App() {
     try {
       const res = await apiFetch('getProyectos');
       if (res.status === 'success') {
-        const allProjs = res.data || [];
-        const allowedRoles = ['ADMIN', 'MANAGER', 'TOUR_MANAGER', 'PRODUCCION'];
-        const userBaseRole = currentUser?.role ? currentUser.role.toUpperCase().split(':')[0].trim() : '';
-        const canSeeAll = allowedRoles.includes(userBaseRole);
-        
-        let filtered = allProjs;
-        if (!canSeeAll && currentUser) {
-          filtered = allProjs.filter(p => {
-            const asignados = Array.isArray(p.asignados) ? p.asignados : [];
-            return asignados.map(e => String(e).toLowerCase().trim()).includes(currentUser.email.toLowerCase().trim());
-          });
-        }
-        setProjects(filtered);
-        
-        if (filtered.length > 0) {
-          loadShowsForProject(filtered[0]);
-        } else {
-          loadShowsForProject({ id: 'INDEPENDENT', name: 'Shows Independientes', client: 'Sin proyecto asociado' });
-        }
+        setProjects(res.data || []);
       } else {
         showToast('Error al cargar proyectos.');
       }
@@ -373,15 +354,7 @@ export default function App() {
           let isMatch = false;
           try {
             const parsed = JSON.parse(r.content);
-            const rProjId = parsed.proyectoId || 'INDEPENDENT';
-            const isProjectMatch = rProjId === project.id;
-            
-            let isUserMatch = true;
-            if (project.id === 'INDEPENDENT' && parsed.creadorEmail && currentUser) {
-              isUserMatch = parsed.creadorEmail.toLowerCase() === currentUser.email.toLowerCase();
-            }
-            
-            isMatch = isProjectMatch && isUserMatch && r.title.startsWith('[Setlist] ');
+            isMatch = parsed.proyectoId === project.id && r.title.startsWith('[Setlist] ');
           } catch(e) {}
           return isMatch;
         });
@@ -436,42 +409,25 @@ export default function App() {
     e.preventDefault();
     if (!newSongTitle.trim() || !activeShow) return;
 
-    const newItem = {
-      type: 'song',
-      song: newSongTitle.trim(),
-      key: newSongKey.trim().toUpperCase() || 'N/A',
-      bpm: newSongBpm.trim() || 'N/A',
-      notes: newSongNotes.trim(),
-      connected: newSongConnected
-    };
-
-    const updatedShow = {
-      ...activeShow,
-      setlist: [...activeShow.setlist, newItem]
-    };
-
-    setActiveShow(updatedShow);
-    setShows(prev => prev.map(s => s.riderId === activeShow.riderId && s.name === activeShow.name ? updatedShow : s));
-
-    // Clear inputs
-    setNewSongTitle('');
-    setNewSongKey('');
-    setNewSongBpm('');
-    setNewSongNotes('');
-    setNewSongConnected(false);
-  };
-
-  const handleAddNote = (e) => {
-    if (e) e.preventDefault();
-    if (!newSongTitle.trim() || !activeShow) return;
-
-    const newItem = {
-      type: 'note',
-      song: newSongTitle.trim(),
-      key: '━',
-      bpm: '━',
-      notes: ''
-    };
+    let newItem;
+    if (addItemType === 'song') {
+      newItem = {
+        type: 'song',
+        song: newSongTitle.trim(),
+        key: newSongKey.trim().toUpperCase() || 'N/A',
+        bpm: newSongBpm.trim() || 'N/A',
+        notes: newSongNotes.trim(),
+        connected: newSongConnected
+      };
+    } else {
+      newItem = {
+        type: 'note',
+        song: newSongTitle.trim(),
+        key: '━',
+        bpm: '━',
+        notes: ''
+      };
+    }
 
     const updatedShow = {
       ...activeShow,
@@ -520,7 +476,6 @@ export default function App() {
       // Map show structure into standard Crew Rider format
       const riderPayload = {
         proyectoId: selectedProject.id,
-        creadorEmail: currentUser?.email || '',
         importante: activeShow.notes,
         soundcheck: "Setlist oficial del show sincronizado por Artist-Gest.",
         recordatorio: activeShow.date,
@@ -950,143 +905,69 @@ export default function App() {
             {/* Sidebar: Projects and Shows */}
             <div className="w-full lg:w-80 shrink-0 space-y-4 flex flex-col">
               
-              {/* Project Selector (only visible if there are projects assigned) */}
-              {projects.length > 0 && (
-                <Card className="p-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-[10px] text-slate-500 uppercase font-black tracking-widest flex items-center gap-1 shrink-0">
-                      <Folder size={12}/> Proyecto
-                    </span>
-                    <select
-                      value={selectedProject?.id || ''}
-                      onChange={(e) => {
-                        const p = projects.find(proj => proj.id === e.target.value);
-                        if (p) loadShowsForProject(p);
-                        else if (e.target.value === 'INDEPENDENT') {
-                          loadShowsForProject({ id: 'INDEPENDENT', name: 'Shows Independientes', client: 'Sin proyecto asociado' });
-                        }
-                      }}
-                      className="bg-slate-950 border border-slate-800 rounded p-1.5 text-xs text-white outline-none focus:border-emerald-500 max-w-[180px] truncate"
+              {/* Project Selector */}
+              <Card className="p-4 flex flex-col">
+                <span className="text-[10px] text-slate-500 uppercase font-black tracking-widest mb-2 flex items-center gap-1.5"><Folder size={12}/> Seleccionar Proyecto</span>
+                <div className="space-y-1.5 max-h-[160px] overflow-y-auto custom-scrollbar pr-1">
+                  {projects.map(p => (
+                    <button 
+                      key={p.id} 
+                      onClick={() => loadShowsForProject(p)}
+                      className={`w-full text-left p-2.5 rounded-lg border transition-all text-xs font-bold ${
+                        selectedProject?.id === p.id 
+                          ? 'bg-emerald-500/10 border-emerald-500/50 text-white' 
+                          : 'bg-slate-950/40 border-slate-850 text-slate-400 hover:bg-slate-900/50'
+                      }`}
                     >
-                      <option value="INDEPENDENT">Independiente (Sin Proyecto)</option>
-                      {projects.map(p => (
-                        <option key={p.id} value={p.id}>{p.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                </Card>
-              )}
+                      <p className="truncate">{p.name}</p>
+                      <p className="text-[9px] text-slate-500 mt-0.5 truncate font-normal">{p.client}</p>
+                    </button>
+                  ))}
+                </div>
+              </Card>
 
               {/* Show Selector (Only if project selected) */}
               {selectedProject && (
-                <Card className="p-3 space-y-2">
-                  <div className="flex items-center justify-between text-[10px] text-slate-500 uppercase font-black tracking-widest border-b border-slate-850 pb-1.5">
-                    <span className="flex items-center gap-1"><Music size={12}/> Shows & Ensayos</span>
-                    <div className="flex items-center gap-1.5">
-                      <button 
-                        onClick={handleCreateShow}
-                        className="p-1 text-emerald-500 hover:text-emerald-400 bg-slate-950 border border-slate-800 rounded transition-colors"
-                        title="Crear Nuevo Show"
-                      >
-                        <Plus size={12} />
-                      </button>
-                      {activeShow && (
-                        <>
-                          <button 
-                            onClick={() => setShowSettingsDropdown(!showSettingsDropdown)}
-                            className={`p-1 border rounded transition-colors ${
-                              showSettingsDropdown 
-                                ? 'text-blue-400 bg-blue-500/10 border-blue-500/30' 
-                                : 'text-slate-400 hover:text-white bg-slate-950 border-slate-800'
+                <Card className="p-4 flex-1 flex flex-col justify-between">
+                  <div>
+                    <span className="text-[10px] text-slate-500 uppercase font-black tracking-widest mb-2.5 flex items-center gap-1.5"><Music size={12}/> Shows & Ensayos</span>
+                    
+                    <div className="space-y-1.5 max-h-[300px] overflow-y-auto custom-scrollbar pr-1 mb-4">
+                      {shows.length === 0 ? (
+                        <p className="text-xs text-slate-500 italic p-4 text-center">No hay shows creados aún en este proyecto.</p>
+                      ) : (
+                        shows.map((show, idx) => (
+                          <div 
+                            key={idx} 
+                            className={`p-2.5 rounded-lg border flex items-center justify-between text-xs transition-all ${
+                              activeShow?.name === show.name && activeShow?.date === show.date
+                                ? 'bg-blue-600/10 border-blue-500/50 text-white font-bold' 
+                                : 'bg-slate-950/40 border-slate-850 text-slate-400 hover:bg-slate-900/50'
                             }`}
-                            title="Ajustes del Show"
                           >
-                            <Settings size={12} />
-                          </button>
-                          <button 
-                            onClick={() => handleDeleteShow(activeShow)} 
-                            className="p-1 text-red-500 hover:text-red-400 bg-slate-950 border border-slate-800 rounded transition-colors"
-                            title="Eliminar Show Activo"
-                          >
-                            <Trash2 size={12} />
-                          </button>
-                        </>
+                            <button 
+                              className="text-left flex-1 min-w-0 mr-2"
+                              onClick={() => setActiveShow(show)}
+                            >
+                              <p className="font-bold truncate">{show.name}</p>
+                              <p className="text-[9px] text-slate-500 mt-0.5 flex items-center gap-1"><Calendar size={10}/> {show.date.split('-').reverse().join('/')}</p>
+                            </button>
+                            <button 
+                              onClick={() => handleDeleteShow(show)} 
+                              className="text-slate-500 hover:text-red-400 p-1 rounded hover:bg-slate-800 transition-colors"
+                              title="Eliminar Show"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
+                        ))
                       )}
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2">
-                    <select
-                      value={activeShow ? `${activeShow.name}|||${activeShow.date}` : ''}
-                      onChange={(e) => {
-                        if (e.target.value === '') {
-                          setActiveShow(null);
-                        } else {
-                          const [name, date] = e.target.value.split('|||');
-                          const show = shows.find(s => s.name === name && s.date === date);
-                          if (show) setActiveShow(show);
-                        }
-                      }}
-                      className="w-full bg-slate-950 border border-slate-800 rounded p-2 text-xs text-white outline-none focus:border-blue-500"
-                    >
-                      <option value="">-- Seleccionar Show --</option>
-                      {shows.map((show, idx) => (
-                        <option key={idx} value={`${show.name}|||${show.date}`}>
-                          {show.name} ({show.date.split('-').reverse().slice(0, 2).join('/')})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {/* Collapsible Show Settings dropdown (Ajustes del Show) */}
-                  {activeShow && showSettingsDropdown && (
-                    <div className="p-3 bg-slate-950/60 border border-slate-850 rounded-lg space-y-3 animate-fadeIn text-left mt-2">
-                      <span className="text-[9px] text-slate-500 uppercase font-black tracking-widest block border-b border-slate-850 pb-1">⚙️ Configuración del Show</span>
-                      
-                      <div>
-                        <label className="text-[9px] font-bold text-slate-400 uppercase block mb-1">Nombre del Show</label>
-                        <input 
-                          type="text" 
-                          value={activeShow.name} 
-                          onChange={e => {
-                            const updated = { ...activeShow, name: e.target.value };
-                            setActiveShow(updated);
-                            setShows(prev => prev.map(s => s.riderId === activeShow.riderId && s.date === activeShow.date ? updated : s));
-                          }} 
-                          className="w-full bg-slate-950 border border-slate-800 focus:border-blue-500 rounded p-2 text-xs text-white outline-none" 
-                        />
-                      </div>
-
-                      <div>
-                        <label className="text-[9px] font-bold text-slate-400 uppercase block mb-1">Fecha del Show</label>
-                        <input 
-                          type="date" 
-                          value={activeShow.date} 
-                          onChange={e => {
-                            const updated = { ...activeShow, date: e.target.value };
-                            setActiveShow(updated);
-                            setShows(prev => prev.map(s => s.riderId === activeShow.riderId && s.name === activeShow.name ? updated : s));
-                          }} 
-                          className="w-full bg-slate-950 border border-slate-800 focus:border-blue-500 rounded p-2 text-xs text-white outline-none" 
-                        />
-                      </div>
-
-                      <div>
-                        <label className="text-[9px] font-bold text-slate-400 uppercase block mb-1">Anotaciones Generales / Catering</label>
-                        <textarea 
-                          rows={3}
-                          value={activeShow.notes} 
-                          onChange={e => {
-                            const updated = { ...activeShow, notes: e.target.value };
-                            setActiveShow(updated);
-                            setShows(prev => prev.map(s => s.riderId === activeShow.riderId && s.name === activeShow.name ? updated : s));
-                          }} 
-                          className="w-full bg-slate-950 border border-slate-800 focus:border-blue-500 rounded p-2 text-xs text-white outline-none resize-none" 
-                          placeholder="Requisitos de catering, sonido, etc."
-                        />
-                      </div>
-                    </div>
-                  )}
+                  <Button onClick={handleCreateShow} variant="primary" className="w-full py-2.5 text-xs font-black" icon={Plus}>
+                    Crear Nuevo Show
+                  </Button>
                 </Card>
               )}
             </div>
@@ -1113,101 +994,187 @@ export default function App() {
                   
                   {/* Left Column: Editor controls */}
                   <div className="space-y-4">
+                    
+                    {/* General Show settings */}
                     <Card className="p-4 space-y-3.5 text-left">
-                      <span className="text-[10px] text-slate-500 uppercase font-black tracking-widest block border-b border-slate-850 pb-1.5">Agregar al Setlist</span>
+                      <span className="text-[10px] text-slate-500 uppercase font-black tracking-widest block border-b border-slate-850 pb-1.5">Ajustes del Show</span>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-[9px] font-bold text-slate-400 uppercase block mb-1">Nombre del Show</label>
+                          <input 
+                            type="text" 
+                            value={activeShow.name} 
+                            onChange={e => {
+                              const updated = { ...activeShow, name: e.target.value };
+                              setActiveShow(updated);
+                              setShows(prev => prev.map(s => s.riderId === activeShow.riderId && s.date === activeShow.date ? updated : s));
+                            }} 
+                            className="w-full bg-slate-950 border border-slate-800 focus:border-emerald-500 rounded p-2 text-xs text-white outline-none" 
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[9px] font-bold text-slate-400 uppercase block mb-1">Fecha</label>
+                          <input 
+                            type="date" 
+                            value={activeShow.date} 
+                            onChange={e => {
+                              const updated = { ...activeShow, date: e.target.value };
+                              setActiveShow(updated);
+                              setShows(prev => prev.map(s => s.riderId === activeShow.riderId && s.name === activeShow.name ? updated : s));
+                            }} 
+                            className="w-full bg-slate-950 border border-slate-800 focus:border-emerald-500 rounded p-2 text-xs text-white outline-none" 
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="text-[9px] font-bold text-slate-400 uppercase block mb-1">Anotaciones Generales de Ensayo</label>
+                        <textarea 
+                          rows={2.5}
+                          value={activeShow.notes} 
+                          onChange={e => {
+                            const updated = { ...activeShow, notes: e.target.value };
+                            setActiveShow(updated);
+                            setShows(prev => prev.map(s => s.riderId === activeShow.riderId && s.name === activeShow.name ? updated : s));
+                          }} 
+                          className="w-full bg-slate-950 border border-slate-800 focus:border-emerald-500 rounded p-2 text-xs text-white outline-none resize-none" 
+                          placeholder="Requisitos de catering, observaciones generales de audio, etc."
+                        />
+                      </div>
+                    </Card>
+                    <Card className="p-4 space-y-3 text-left">
+                      <div className="flex justify-between items-center border-b border-slate-850 pb-2">
+                        <span className="text-[10px] text-slate-500 uppercase font-black tracking-widest block">Agregar al Setlist</span>
+                        <div className="flex bg-slate-950 p-0.5 rounded border border-slate-800">
+                          <button 
+                            type="button" 
+                            onClick={() => { setAddItemType('song'); setNewSongTitle(''); }}
+                            className={`px-2 py-0.5 rounded text-[9px] font-black uppercase transition-all ${
+                              addItemType === 'song' ? 'bg-emerald-500 text-slate-950' : 'text-slate-400 hover:text-white'
+                            }`}
+                          >
+                            Canción
+                          </button>
+                          <button 
+                            type="button" 
+                            onClick={() => { setAddItemType('note'); setNewSongTitle(''); }}
+                            className={`px-2 py-0.5 rounded text-[9px] font-black uppercase transition-all ${
+                              addItemType === 'note' ? 'bg-amber-500 text-slate-950' : 'text-slate-400 hover:text-white'
+                            }`}
+                          >
+                            Nota / Intermedio
+                          </button>
+                        </div>
+                      </div>
                       
                       <form onSubmit={handleAddSong} className="space-y-3">
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                          <div className="sm:col-span-2">
-                            <label className="text-[9px] font-bold text-slate-400 uppercase block mb-1">Título de la Canción o Texto de la Nota</label>
-                            <input 
-                              type="text" 
-                              value={newSongTitle} 
-                              onChange={e => setNewSongTitle(e.target.value)} 
-                              className="w-full bg-slate-950 border border-slate-800 focus:border-emerald-500 rounded p-2 text-xs text-white outline-none" 
-                              placeholder="Ej. Canción de entrada, o conversación con público" 
-                              required 
-                            />
-                          </div>
-                          <div>
-                            <label className="text-[9px] font-bold text-slate-400 uppercase block mb-1">Tono (Key) <span className="text-[8px] text-slate-500 font-normal">(Sólo Canción)</span></label>
-                            <input 
-                              type="text" 
-                              value={newSongKey} 
-                              onChange={e => setNewSongKey(e.target.value)} 
-                              className="w-full bg-slate-950 border border-slate-800 focus:border-emerald-500 rounded p-2 text-xs text-white outline-none" 
-                              placeholder="Ej. Gmin" 
-                            />
-                          </div>
-                        </div>
+                        {addItemType === 'song' ? (
+                          <>
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                              <div className="sm:col-span-2">
+                                <label className="text-[9px] font-bold text-slate-400 uppercase block mb-1">Título de la Canción</label>
+                                <input 
+                                  type="text" 
+                                  value={newSongTitle} 
+                                  onChange={e => setNewSongTitle(e.target.value)} 
+                                  className="w-full bg-slate-950 border border-slate-800 focus:border-emerald-500 rounded p-2 text-xs text-white outline-none" 
+                                  placeholder="Ej. Canción de entrada" 
+                                  required 
+                                />
+                              </div>
+                              <div>
+                                <label className="text-[9px] font-bold text-slate-400 uppercase block mb-1">Tono (Key)</label>
+                                <input 
+                                  type="text" 
+                                  value={newSongKey} 
+                                  onChange={e => setNewSongKey(e.target.value)} 
+                                  className="w-full bg-slate-950 border border-slate-800 focus:border-emerald-500 rounded p-2 text-xs text-white outline-none" 
+                                  placeholder="Ej. Gmin" 
+                                />
+                              </div>
+                            </div>
 
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                          <div>
-                            <label className="text-[9px] font-bold text-slate-400 uppercase block mb-1">Ritmo (BPM) <span className="text-[8px] text-slate-500 font-normal">(Sólo Canción)</span></label>
-                            <input 
-                              type="number" 
-                              value={newSongBpm} 
-                              onChange={e => setNewSongBpm(e.target.value)} 
-                              className="w-full bg-slate-950 border border-slate-800 focus:border-emerald-500 rounded p-2 text-xs text-white outline-none font-mono" 
-                              placeholder="Ej. 120" 
-                            />
-                          </div>
-                          <div className="sm:col-span-2">
-                            <label className="text-[9px] font-bold text-slate-400 uppercase block mb-1">Observaciones <span className="text-[8px] text-slate-500 font-normal">(Sólo Canción)</span></label>
-                            <input 
-                              type="text" 
-                              value={newSongNotes} 
-                              onChange={e => setNewSongNotes(e.target.value)} 
-                              className="w-full bg-slate-950 border border-slate-800 focus:border-emerald-500 rounded p-2 text-xs text-white outline-none" 
-                              placeholder="Ej. Intro sin guitarra" 
-                            />
-                          </div>
-                        </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                              <div>
+                                <label className="text-[9px] font-bold text-slate-400 uppercase block mb-1">Ritmo (BPM)</label>
+                                <input 
+                                  type="number" 
+                                  value={newSongBpm} 
+                                  onChange={e => setNewSongBpm(e.target.value)} 
+                                  className="w-full bg-slate-950 border border-slate-800 focus:border-emerald-500 rounded p-2 text-xs text-white outline-none font-mono" 
+                                  placeholder="Ej. 120" 
+                                />
+                              </div>
+                              <div className="sm:col-span-2">
+                                <label className="text-[9px] font-bold text-slate-400 uppercase block mb-1">Anotaciones / Comentarios</label>
+                                <input 
+                                  type="text" 
+                                  value={newSongNotes} 
+                                  onChange={e => setNewSongNotes(e.target.value)} 
+                                  className="w-full bg-slate-950 border border-slate-800 focus:border-emerald-500 rounded p-2 text-xs text-white outline-none" 
+                                  placeholder="Ej. Intro sin guitarra, baterista marca tempos" 
+                                />
+                              </div>
+                            </div>
 
-                        <div className="flex items-center gap-2 pt-1.5 border-t border-slate-850">
-                          <input 
-                            type="checkbox" 
-                            id="connectedNext"
-                            checked={newSongConnected}
-                            onChange={e => setNewSongConnected(e.target.checked)}
-                            className="accent-emerald-500 rounded bg-slate-950 border-slate-800 w-3.5 h-3.5 cursor-pointer shrink-0" 
-                          />
-                          <label htmlFor="connectedNext" className="text-[10px] text-slate-400 cursor-pointer select-none leading-none">
-                            🔗 Esta canción va pegada a la siguiente (sin pausa)
-                          </label>
-                        </div>
+                            <div className="flex items-center gap-2 pt-1.5 border-t border-slate-850">
+                              <input 
+                                type="checkbox" 
+                                id="connectedNext"
+                                checked={newSongConnected}
+                                onChange={e => setNewSongConnected(e.target.checked)}
+                                className="accent-emerald-500 rounded bg-slate-950 border-slate-800 w-3.5 h-3.5 cursor-pointer shrink-0" 
+                              />
+                              <label htmlFor="connectedNext" className="text-[10px] text-slate-400 cursor-pointer select-none leading-none">
+                                🔗 Esta canción va pegada a la siguiente (sin pausa)
+                              </label>
+                            </div>
 
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
-                          <Button type="submit" variant="blue" className="w-full py-2 text-xs font-bold" icon={Plus}>
-                            Insertar Canción
-                          </Button>
-                          <Button 
-                            type="button" 
-                            onClick={handleAddNote}
-                            className="w-full py-2 text-xs font-bold bg-amber-600 hover:bg-amber-500 border-amber-600" 
-                            icon={Plus}
-                          >
-                            Insertar Nota / Intermedio
-                          </Button>
-                        </div>
+                            <Button type="submit" variant="blue" className="w-full py-2 text-xs font-bold" icon={Plus}>
+                              Insertar Canción
+                            </Button>
+                          </>
+                        ) : (
+                          <>
+                            <div>
+                              <label className="text-[9px] font-bold text-slate-400 uppercase block mb-1">Texto de la Nota / Actividad Intermedia</label>
+                              <textarea 
+                                rows={2.5}
+                                value={newSongTitle} 
+                                onChange={e => setNewSongTitle(e.target.value)} 
+                                className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500 rounded p-2 text-xs text-white outline-none resize-none" 
+                                placeholder="Ej. El artista saluda y conversa con el público, o Solo de batería de transición" 
+                                required 
+                              />
+                            </div>
+
+                            <Button type="submit" className="w-full py-2 text-xs font-bold bg-amber-600 hover:bg-amber-500 border-amber-600" icon={Plus}>
+                              Insertar Nota en Setlist
+                            </Button>
+                          </>
+                        )}
                       </form>
                     </Card>
 
                     {/* Sync and Actions */}
-                    <div className="flex gap-2">
-                      {selectedProject?.id !== 'INDEPENDENT' ? (
-                        <Button onClick={handleSaveShow} disabled={loading} variant="primary" className="flex-1 py-3" icon={Save}>
-                          {loading ? 'Sincronizando...' : 'Sincronizar con Esquemapps'}
-                        </Button>
-                      ) : (
-                        <Button onClick={handleSaveShow} disabled={loading} variant="primary" className="flex-1 py-3" icon={Save}>
-                          {loading ? 'Guardando...' : 'Guardar Show'}
-                        </Button>
-                      )}
-                      <Button onClick={downloadPDF} variant="secondary" className="px-5 py-3" icon={Download}>
-                        PDF
-                      </Button>
-                    </div>
+                    {(() => {
+                      const isArtistAssigned = 
+                        selectedProject && 
+                        currentUser && 
+                        Array.isArray(selectedProject.asignados) && 
+                        selectedProject.asignados.map(e => String(e).toLowerCase().trim()).includes(currentUser.email.toLowerCase().trim());
+                      return (
+                        <div className="flex gap-2 w-full">
+                          {isArtistAssigned && (
+                            <Button onClick={handleSaveShow} disabled={loading} variant="primary" className="flex-1 py-3" icon={Save}>
+                              {loading ? 'Guardando...' : 'Sincronizar con Esquemapps'}
+                            </Button>
+                          )}
+                          <Button onClick={downloadPDF} variant="secondary" className={`${isArtistAssigned ? 'px-5' : 'w-full'} py-3`} icon={Download}>
+                            {isArtistAssigned ? 'PDF' : 'Descargar PDF'}
+                          </Button>
+                        </div>
+                      );
+                    })()}
                   </div>
 
                   {/* Right Column: PDF Preview / Setlist list */}
