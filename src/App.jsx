@@ -354,9 +354,11 @@ export default function App() {
         }
       } else {
         showToast('Error al cargar proyectos.');
+        loadShowsForProject({ id: 'INDEPENDENT', name: 'Shows Independientes', client: 'Sin proyecto asociado' });
       }
     } catch (err) {
       showToast('Error de conexión con el servidor.');
+      loadShowsForProject({ id: 'INDEPENDENT', name: 'Shows Independientes', client: 'Sin proyecto asociado' });
     }
     setLoading(false);
   };
@@ -365,6 +367,38 @@ export default function App() {
     setSelectedProject(project);
     setActiveShow(null);
     setLoading(true);
+
+    if (project.id === 'INDEPENDENT') {
+      try {
+        const localShows = localStorage.getItem('independent_shows');
+        const parsed = localShows ? JSON.parse(localShows) : [];
+        if (parsed.length > 0) {
+          setShows(parsed);
+          setActiveShow(parsed[0]);
+        } else {
+          const defaultShow = {
+            name: 'Mi Primer Show',
+            date: new Date().toISOString().split('T')[0],
+            notes: '',
+            setlist: []
+          };
+          setShows([defaultShow]);
+          setActiveShow(defaultShow);
+        }
+      } catch (e) {
+        const defaultShow = {
+          name: 'Mi Primer Show',
+          date: new Date().toISOString().split('T')[0],
+          notes: '',
+          setlist: []
+        };
+        setShows([defaultShow]);
+        setActiveShow(defaultShow);
+      }
+      setLoading(false);
+      return;
+    }
+
     try {
       const res = await apiFetch('getRiders');
       if (res.status === 'success') {
@@ -394,12 +428,17 @@ export default function App() {
           const notes = parsedContent.importante || '';
           
           // Re-map backline array back to setlist items
-          const setlist = (parsedContent.backline || []).map(b => ({
-            song: b.col1 || '',
-            key: b.col3?.split(' | ')[0]?.replace('Key: ', '') || '',
-            bpm: b.col3?.split(' | ')[1]?.replace('BPM: ', '') || '',
-            notes: b.col4 || ''
-          }));
+          const setlist = (parsedContent.backline || []).map(b => {
+            const isNote = b.col1.startsWith('[Nota] ');
+            return {
+              type: isNote ? 'note' : 'song',
+              song: isNote ? b.col1.replace('[Nota] ', '') : b.col1.replace(' 🔗 (Pegada)', ''),
+              key: b.col3.includes('Key: ') ? b.col3.split(' | ')[0].replace('Key: ', '').trim() : (b.col3 === '━' ? '' : b.col3),
+              bpm: b.col3.includes('BPM: ') ? b.col3.split(' | ')[1].replace('BPM: ', '').trim() : (b.col3 === '━' ? '' : b.col3),
+              notes: b.col4 === '━' ? '' : b.col4,
+              connected: b.col1.includes('🔗 (Pegada)')
+            };
+          });
 
           return {
             riderId: r.id,
@@ -411,6 +450,18 @@ export default function App() {
         });
 
         setShows(parsedShows);
+        if (parsedShows.length > 0) {
+          setActiveShow(parsedShows[0]);
+        } else {
+          const defaultShow = {
+            name: 'Mi Primer Show',
+            date: new Date().toISOString().split('T')[0],
+            notes: '',
+            setlist: []
+          };
+          setShows([defaultShow]);
+          setActiveShow(defaultShow);
+        }
       } else {
         showToast('Error al cargar setlists.');
       }
@@ -516,6 +567,26 @@ export default function App() {
   const handleSaveShow = async () => {
     if (!selectedProject || !activeShow) return;
     setLoading(true);
+
+    if (selectedProject.id === 'INDEPENDENT') {
+      try {
+        const updatedShows = shows.map(s => {
+          // If match by date and name, or if it's the current active show
+          if (s.name === activeShow.name && s.date === activeShow.date) {
+            return activeShow;
+          }
+          return s;
+        });
+        localStorage.setItem('independent_shows', JSON.stringify(updatedShows));
+        setShows(updatedShows);
+        showToast('Show guardado en memoria local.');
+      } catch (e) {
+        showToast('Error al guardar localmente.');
+      }
+      setLoading(false);
+      return;
+    }
+
     try {
       // Map show structure into standard Crew Rider format
       const riderPayload = {
@@ -581,6 +652,26 @@ export default function App() {
   };
 
   const handleDeleteShow = async (show) => {
+    if (selectedProject?.id === 'INDEPENDENT') {
+      const updated = shows.filter(s => !(s.name === show.name && s.date === show.date));
+      localStorage.setItem('independent_shows', JSON.stringify(updated));
+      setShows(updated);
+      if (updated.length > 0) {
+        setActiveShow(updated[0]);
+      } else {
+        const defaultShow = {
+          name: 'Mi Primer Show',
+          date: new Date().toISOString().split('T')[0],
+          notes: '',
+          setlist: []
+        };
+        setShows([defaultShow]);
+        setActiveShow(defaultShow);
+      }
+      showToast('Show eliminado de memoria local.');
+      return;
+    }
+
     if (!show.riderId) {
       // Just remove from local list if not saved to Sheets
       setShows(prev => prev.filter(s => s !== show));
