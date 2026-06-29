@@ -89,7 +89,8 @@ const apiFetch = async (action, payload = {}) => {
 };
 
 export default function App() {
-  const [passcode, setPasscode] = useState('');
+  const [loginEmail, setLoginEmail] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [loginError, setLoginError] = useState('');
 
@@ -116,31 +117,83 @@ export default function App() {
   // Check auth persistence
   useEffect(() => {
     const savedAuth = window.localStorage.getItem('artist_gest_auth');
-    if (savedAuth === 'true') {
-      setIsAuthenticated(true);
-      fetchProjects();
+    const savedEmail = window.localStorage.getItem('artist_gest_email');
+    const savedPass = window.localStorage.getItem('artist_gest_pass');
+
+    const autoLogin = async () => {
+      setLoading(true);
+      try {
+        const res = await apiFetch('login', { email: savedEmail, password: savedPass });
+        if (res.status === 'success') {
+          setIsAuthenticated(true);
+          // Directly load projects
+          const projRes = await apiFetch('getProyectos');
+          if (projRes.status === 'success') {
+            setProjects(projRes.data || []);
+          }
+        } else {
+          handleLogout();
+        }
+      } catch (e) {
+        handleLogout();
+      }
+      setLoading(false);
+    };
+
+    if (savedAuth === 'true' && savedEmail && savedPass) {
+      autoLogin();
     }
   }, []);
 
-  const handleLogin = (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault();
-    if (passcode === ACCESS_PASSCODE) {
-      setIsAuthenticated(true);
-      window.localStorage.setItem('artist_gest_auth', 'true');
-      setLoginError('');
-      fetchProjects();
-    } else {
-      setLoginError('Código de acceso incorrecto.');
+    setLoading(true);
+    setLoginError('');
+    try {
+      const res = await apiFetch('login', { email: loginEmail, password: loginPassword });
+      if (res.status === 'success') {
+        const user = res.user;
+        const allowedRoles = ['ADMIN', 'MANAGER', 'TOUR_MANAGER', 'ARTISTA', 'PRODUCCION'];
+        const userRole = user.role ? user.role.toUpperCase() : '';
+        const isAllowed = allowedRoles.includes(userRole) || (user.permisos || []).includes('PROJECTS_MANAGE');
+        
+        if (isAllowed) {
+          setIsAuthenticated(true);
+          window.localStorage.setItem('artist_gest_auth', 'true');
+          window.localStorage.setItem('artist_gest_email', loginEmail);
+          window.localStorage.setItem('artist_gest_pass', loginPassword);
+          setLoginError('');
+          showToast(`Bienvenido, ${user.name}`);
+          
+          // Load projects
+          setProjects([]);
+          const projRes = await apiFetch('getProyectos');
+          if (projRes.status === 'success') {
+            setProjects(projRes.data || []);
+          }
+        } else {
+          setLoginError('Acceso denegado: Tu rol no tiene permisos de administración artística.');
+        }
+      } else {
+        setLoginError(res.message || 'Credenciales inválidas.');
+      }
+    } catch (err) {
+      setLoginError('Error de red al intentar iniciar sesión.');
     }
+    setLoading(false);
   };
 
   const handleLogout = () => {
     window.localStorage.removeItem('artist_gest_auth');
+    window.localStorage.removeItem('artist_gest_email');
+    window.localStorage.removeItem('artist_gest_pass');
     setIsAuthenticated(false);
     setProjects([]);
     setSelectedProject(null);
     setShows([]);
     setActiveShow(null);
+    setLoginEmail('');
+    setLoginPassword('');
   };
 
   const fetchProjects = async () => {
@@ -436,7 +489,7 @@ export default function App() {
                 <p className="text-xs text-slate-400">Ingresa el código de acceso exclusivo de Artist-Gest para administrar repertorios.</p>
               </div>
 
-              <form onSubmit={handleLogin} className="space-y-4">
+              <form onSubmit={handleLogin} className="space-y-4 text-left">
                 {loginError && (
                   <div className="bg-red-500/10 border border-red-500/50 text-red-400 text-xs p-3 rounded-lg flex items-center gap-2.5">
                     <AlertCircle size={16} className="shrink-0" />
@@ -444,18 +497,29 @@ export default function App() {
                   </div>
                 )}
                 <div>
-                  <label className="block text-xs font-bold text-slate-400 mb-1.5 uppercase tracking-wider">Código de Seguridad</label>
+                  <label className="block text-[10px] font-bold text-slate-400 mb-1.5 uppercase tracking-wider">Correo Electrónico</label>
+                  <input 
+                    type="email" 
+                    value={loginEmail} 
+                    onChange={e => setLoginEmail(e.target.value)} 
+                    className="w-full bg-slate-950 border border-slate-800 focus:border-emerald-500 rounded-lg p-2.5 text-xs text-white outline-none transition-colors" 
+                    placeholder="nombre@correo.com" 
+                    required 
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 mb-1.5 uppercase tracking-wider">Contraseña</label>
                   <input 
                     type="password" 
-                    value={passcode} 
-                    onChange={e => setPasscode(e.target.value)} 
-                    className="w-full bg-slate-950 border border-slate-800 focus:border-emerald-500 rounded-lg p-3 text-white text-center font-mono text-xl tracking-widest outline-none transition-colors" 
+                    value={loginPassword} 
+                    onChange={e => setLoginPassword(e.target.value)} 
+                    className="w-full bg-slate-950 border border-slate-800 focus:border-emerald-500 rounded-lg p-2.5 text-xs text-white outline-none transition-colors font-mono" 
                     placeholder="••••••••" 
                     required 
                   />
                 </div>
-                <Button type="submit" className="w-full py-3" icon={Lock}>
-                  Desbloquear Panel
+                <Button type="submit" className="w-full py-3" disabled={loading} icon={Lock}>
+                  {loading ? 'Iniciando Sesión...' : 'Iniciar Sesión'}
                 </Button>
               </form>
             </Card>
