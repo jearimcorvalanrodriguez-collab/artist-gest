@@ -19,7 +19,8 @@ import {
   AlertCircle,
   LogOut,
   User,
-  ShieldCheck
+  ShieldCheck,
+  Link
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
@@ -137,6 +138,8 @@ export default function App() {
   const [newSongKey, setNewSongKey] = useState('');
   const [newSongBpm, setNewSongBpm] = useState('');
   const [newSongNotes, setNewSongNotes] = useState('');
+  const [addItemType, setAddItemType] = useState('song');
+  const [newSongConnected, setNewSongConnected] = useState(false);
 
   const showToast = (message) => {
     setToastMessage(message);
@@ -261,7 +264,8 @@ export default function App() {
         const user = res.user;
         const allowedRoles = ['ADMIN', 'MANAGER', 'TOUR_MANAGER', 'ARTISTA', 'PRODUCCION'];
         const userRole = user.role ? user.role.toUpperCase() : '';
-        const isAllowed = allowedRoles.includes(userRole) || (user.permisos || []).includes('PROJECTS_MANAGE');
+        const baseRole = userRole.split(':')[0].trim();
+        const isAllowed = allowedRoles.includes(baseRole) || (user.permisos || []).includes('PROJECTS_MANAGE');
         
         if (isAllowed) {
           setIsAuthenticated(true);
@@ -389,26 +393,40 @@ export default function App() {
     e.preventDefault();
     if (!newSongTitle.trim() || !activeShow) return;
 
-    const newSong = {
-      song: newSongTitle.trim(),
-      key: newSongKey.trim().toUpperCase() || 'N/A',
-      bpm: newSongBpm.trim() || 'N/A',
-      notes: newSongNotes.trim()
-    };
+    let newItem;
+    if (addItemType === 'song') {
+      newItem = {
+        type: 'song',
+        song: newSongTitle.trim(),
+        key: newSongKey.trim().toUpperCase() || 'N/A',
+        bpm: newSongBpm.trim() || 'N/A',
+        notes: newSongNotes.trim(),
+        connected: newSongConnected
+      };
+    } else {
+      newItem = {
+        type: 'note',
+        song: newSongTitle.trim(),
+        key: '━',
+        bpm: '━',
+        notes: ''
+      };
+    }
 
     const updatedShow = {
       ...activeShow,
-      setlist: [...activeShow.setlist, newSong]
+      setlist: [...activeShow.setlist, newItem]
     };
 
     setActiveShow(updatedShow);
-    setShows(prev => prev.map(s => s.name === activeShow.name && s.date === activeShow.date ? updatedShow : s));
+    setShows(prev => prev.map(s => s.riderId === activeShow.riderId && s.name === activeShow.name ? updatedShow : s));
 
     // Clear inputs
     setNewSongTitle('');
     setNewSongKey('');
     setNewSongBpm('');
     setNewSongNotes('');
+    setNewSongConnected(false);
   };
 
   const handleRemoveSong = (idx) => {
@@ -445,12 +463,19 @@ export default function App() {
         importante: activeShow.notes,
         soundcheck: "Setlist oficial del show sincronizado por Artist-Gest.",
         recordatorio: activeShow.date,
-        backline: activeShow.setlist.map((s, idx) => ({
-          col1: s.song,
-          col2: String(idx + 1),
-          col3: `Key: ${s.key} | BPM: ${s.bpm}`,
-          col4: s.notes
-        })),
+        backline: (() => {
+          let songCounter = 0;
+          return activeShow.setlist.map((s) => {
+            const isNote = s.type === 'note';
+            if (!isNote) songCounter++;
+            return {
+              col1: isNote ? `[Nota] ${s.song}` : s.song + (s.connected ? ' 🔗 (Pegada)' : ''),
+              col2: isNote ? '━' : String(songCounter),
+              col3: isNote ? '━' : `Key: ${s.key} | BPM: ${s.bpm}`,
+              col4: isNote ? '━' : s.notes
+            };
+          });
+        })(),
         inputs: [{ ch: '', name: '', mic: '', v48: '', stand: '', position: '', obs: '' }],
         outputs: [{ mix: '', player: '', monitor: '', obs: '' }],
         visuals: [{ col1: '', col2: '', col3: '', col4: '' }],
@@ -997,62 +1022,117 @@ export default function App() {
                         />
                       </div>
                     </Card>
-
-                    {/* Add Song form */}
                     <Card className="p-4 space-y-3 text-left">
-                      <span className="text-[10px] text-slate-500 uppercase font-black tracking-widest block border-b border-slate-850 pb-1.5">Agregar Canción al Setlist</span>
+                      <div className="flex justify-between items-center border-b border-slate-850 pb-2">
+                        <span className="text-[10px] text-slate-500 uppercase font-black tracking-widest block">Agregar al Setlist</span>
+                        <div className="flex bg-slate-950 p-0.5 rounded border border-slate-800">
+                          <button 
+                            type="button" 
+                            onClick={() => { setAddItemType('song'); setNewSongTitle(''); }}
+                            className={`px-2 py-0.5 rounded text-[9px] font-black uppercase transition-all ${
+                              addItemType === 'song' ? 'bg-emerald-500 text-slate-950' : 'text-slate-400 hover:text-white'
+                            }`}
+                          >
+                            Canción
+                          </button>
+                          <button 
+                            type="button" 
+                            onClick={() => { setAddItemType('note'); setNewSongTitle(''); }}
+                            className={`px-2 py-0.5 rounded text-[9px] font-black uppercase transition-all ${
+                              addItemType === 'note' ? 'bg-amber-500 text-slate-950' : 'text-slate-400 hover:text-white'
+                            }`}
+                          >
+                            Nota / Intermedio
+                          </button>
+                        </div>
+                      </div>
                       
                       <form onSubmit={handleAddSong} className="space-y-3">
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                          <div className="sm:col-span-2">
-                            <label className="text-[9px] font-bold text-slate-400 uppercase block mb-1">Título de la Canción</label>
-                            <input 
-                              type="text" 
-                              value={newSongTitle} 
-                              onChange={e => setNewSongTitle(e.target.value)} 
-                              className="w-full bg-slate-950 border border-slate-800 focus:border-emerald-500 rounded p-2 text-xs text-white outline-none" 
-                              placeholder="Ej. Song A" 
-                              required 
-                            />
-                          </div>
-                          <div>
-                            <label className="text-[9px] font-bold text-slate-400 uppercase block mb-1">Tono (Key)</label>
-                            <input 
-                              type="text" 
-                              value={newSongKey} 
-                              onChange={e => setNewSongKey(e.target.value)} 
-                              className="w-full bg-slate-950 border border-slate-800 focus:border-emerald-500 rounded p-2 text-xs text-white outline-none" 
-                              placeholder="Ej. Gmin" 
-                            />
-                          </div>
-                        </div>
+                        {addItemType === 'song' ? (
+                          <>
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                              <div className="sm:col-span-2">
+                                <label className="text-[9px] font-bold text-slate-400 uppercase block mb-1">Título de la Canción</label>
+                                <input 
+                                  type="text" 
+                                  value={newSongTitle} 
+                                  onChange={e => setNewSongTitle(e.target.value)} 
+                                  className="w-full bg-slate-950 border border-slate-800 focus:border-emerald-500 rounded p-2 text-xs text-white outline-none" 
+                                  placeholder="Ej. Canción de entrada" 
+                                  required 
+                                />
+                              </div>
+                              <div>
+                                <label className="text-[9px] font-bold text-slate-400 uppercase block mb-1">Tono (Key)</label>
+                                <input 
+                                  type="text" 
+                                  value={newSongKey} 
+                                  onChange={e => setNewSongKey(e.target.value)} 
+                                  className="w-full bg-slate-950 border border-slate-800 focus:border-emerald-500 rounded p-2 text-xs text-white outline-none" 
+                                  placeholder="Ej. Gmin" 
+                                />
+                              </div>
+                            </div>
 
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                          <div>
-                            <label className="text-[9px] font-bold text-slate-400 uppercase block mb-1">Ritmo (BPM)</label>
-                            <input 
-                              type="number" 
-                              value={newSongBpm} 
-                              onChange={e => setNewSongBpm(e.target.value)} 
-                              className="w-full bg-slate-950 border border-slate-800 focus:border-emerald-500 rounded p-2 text-xs text-white outline-none font-mono" 
-                              placeholder="Ej. 120" 
-                            />
-                          </div>
-                          <div className="sm:col-span-2">
-                            <label className="text-[9px] font-bold text-slate-400 uppercase block mb-1">Anotaciones / Comentarios</label>
-                            <input 
-                              type="text" 
-                              value={newSongNotes} 
-                              onChange={e => setNewSongNotes(e.target.value)} 
-                              className="w-full bg-slate-950 border border-slate-800 focus:border-emerald-500 rounded p-2 text-xs text-white outline-none" 
-                              placeholder="Ej. Intro sin guitarra, baterista marca tiempos" 
-                            />
-                          </div>
-                        </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                              <div>
+                                <label className="text-[9px] font-bold text-slate-400 uppercase block mb-1">Ritmo (BPM)</label>
+                                <input 
+                                  type="number" 
+                                  value={newSongBpm} 
+                                  onChange={e => setNewSongBpm(e.target.value)} 
+                                  className="w-full bg-slate-950 border border-slate-800 focus:border-emerald-500 rounded p-2 text-xs text-white outline-none font-mono" 
+                                  placeholder="Ej. 120" 
+                                />
+                              </div>
+                              <div className="sm:col-span-2">
+                                <label className="text-[9px] font-bold text-slate-400 uppercase block mb-1">Anotaciones / Comentarios</label>
+                                <input 
+                                  type="text" 
+                                  value={newSongNotes} 
+                                  onChange={e => setNewSongNotes(e.target.value)} 
+                                  className="w-full bg-slate-950 border border-slate-800 focus:border-emerald-500 rounded p-2 text-xs text-white outline-none" 
+                                  placeholder="Ej. Intro sin guitarra, baterista marca tempos" 
+                                />
+                              </div>
+                            </div>
 
-                        <Button type="submit" variant="blue" className="w-full py-2.5 text-xs font-bold" icon={Plus}>
-                          Insertar Tema
-                        </Button>
+                            <div className="flex items-center gap-2 pt-1.5 border-t border-slate-850">
+                              <input 
+                                type="checkbox" 
+                                id="connectedNext"
+                                checked={newSongConnected}
+                                onChange={e => setNewSongConnected(e.target.checked)}
+                                className="accent-emerald-500 rounded bg-slate-950 border-slate-800 w-3.5 h-3.5 cursor-pointer shrink-0" 
+                              />
+                              <label htmlFor="connectedNext" className="text-[10px] text-slate-400 cursor-pointer select-none leading-none">
+                                🔗 Esta canción va pegada a la siguiente (sin pausa)
+                              </label>
+                            </div>
+
+                            <Button type="submit" variant="blue" className="w-full py-2 text-xs font-bold" icon={Plus}>
+                              Insertar Canción
+                            </Button>
+                          </>
+                        ) : (
+                          <>
+                            <div>
+                              <label className="text-[9px] font-bold text-slate-400 uppercase block mb-1">Texto de la Nota / Actividad Intermedia</label>
+                              <textarea 
+                                rows={2.5}
+                                value={newSongTitle} 
+                                onChange={e => setNewSongTitle(e.target.value)} 
+                                className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500 rounded p-2 text-xs text-white outline-none resize-none" 
+                                placeholder="Ej. El artista saluda y conversa con el público, o Solo de batería de transición" 
+                                required 
+                              />
+                            </div>
+
+                            <Button type="submit" className="w-full py-2 text-xs font-bold bg-amber-600 hover:bg-amber-500 border-amber-600" icon={Plus}>
+                              Insertar Nota en Setlist
+                            </Button>
+                          </>
+                        )}
                       </form>
                     </Card>
 
@@ -1111,15 +1191,46 @@ export default function App() {
                                 </tr>
                               </thead>
                               <tbody>
-                                {activeShow.setlist.map((item, idx) => (
-                                  <tr key={idx} className="border-b border-slate-100 last:border-0 hover:bg-slate-50/50">
-                                    <td className="p-2 text-center font-bold border-r border-slate-200 bg-slate-50">{idx + 1}</td>
-                                    <td className="p-2 font-bold text-slate-900 border-r border-slate-200">{item.song}</td>
-                                    <td className="p-2 text-center font-mono border-r border-slate-200">{item.key || 'N/A'}</td>
-                                    <td className="p-2 text-center font-mono border-r border-slate-200">{item.bpm || 'N/A'}</td>
-                                    <td className="p-2 text-[10px] text-slate-600">{item.notes || 'Sin anotaciones'}</td>
-                                  </tr>
-                                ))}
+                                {(() => {
+                                  let songCounter = 0;
+                                  return activeShow.setlist.map((item, idx) => {
+                                    const isNote = item.type === 'note';
+                                    if (!isNote) songCounter++;
+                                    
+                                    if (isNote) {
+                                      return (
+                                        <tr key={idx} className="border-b border-slate-200 bg-slate-50/50">
+                                          <td className="p-2 text-center font-bold border-r border-slate-200 text-slate-400 bg-slate-100">━</td>
+                                          <td colSpan={4} className="p-2.5 font-bold text-slate-500 italic bg-slate-50/30">
+                                            <span className="flex items-center gap-1.5">
+                                              <span className="px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-600 text-[8px] font-black uppercase not-italic border border-amber-500/25">Nota / Intermedio</span>
+                                              {item.song}
+                                            </span>
+                                          </td>
+                                        </tr>
+                                      );
+                                    }
+
+                                    return (
+                                      <tr key={idx} className="border-b border-slate-100 last:border-0 hover:bg-slate-50/50">
+                                        <td className="p-2 text-center font-bold border-r border-slate-200 bg-slate-50">{songCounter}</td>
+                                        <td className="p-2 border-r border-slate-200">
+                                          <div className="flex items-center gap-1.5">
+                                            <span className="font-bold text-slate-900">{item.song}</span>
+                                            {item.connected && (
+                                              <span className="inline-flex items-center gap-0.5 px-1 py-0.5 bg-blue-100 text-blue-700 text-[8px] font-black rounded border border-blue-200">
+                                                <Link size={8} className="shrink-0" /> SEGUE
+                                              </span>
+                                            )}
+                                          </div>
+                                        </td>
+                                        <td className="p-2 text-center font-mono border-r border-slate-200">{item.key || 'N/A'}</td>
+                                        <td className="p-2 text-center font-mono border-r border-slate-200">{item.bpm || 'N/A'}</td>
+                                        <td className="p-2 text-[10px] text-slate-600">{item.notes || 'Sin anotaciones'}</td>
+                                      </tr>
+                                    );
+                                  });
+                                })()}
                               </tbody>
                             </table>
                           </div>
@@ -1138,20 +1249,39 @@ export default function App() {
                       <Card className="p-4 space-y-2 text-left">
                         <span className="text-[10px] text-slate-500 uppercase font-black tracking-widest block border-b border-slate-850 pb-1.5">Ordenar y Editar Setlist</span>
                         <div className="space-y-1 max-h-[300px] overflow-y-auto custom-scrollbar pr-1">
-                          {activeShow.setlist.map((item, idx) => (
-                            <div key={idx} className="flex justify-between items-center text-xs bg-slate-950/40 p-2 rounded border border-slate-850">
-                              <div className="flex items-center gap-2 truncate">
-                                <span className="font-mono text-slate-500 font-bold w-4 text-right shrink-0">{idx+1}</span>
-                                <span className="font-bold text-white truncate">{item.song}</span>
-                                <span className="text-[9px] bg-slate-900 border border-slate-800 text-emerald-400 px-1 rounded shrink-0">{item.key}</span>
+                          {activeShow.setlist.map((item, idx) => {
+                            const isNote = item.type === 'note';
+                            return (
+                              <div key={idx} className={`flex justify-between items-center text-xs p-2 rounded border ${
+                                isNote 
+                                  ? 'bg-slate-900/40 border-slate-800 border-dashed text-slate-400' 
+                                  : 'bg-slate-950/40 border-slate-850 text-white'
+                              }`}>
+                                <div className="flex items-center gap-2 truncate">
+                                  <span className="font-mono text-slate-500 font-bold w-4 text-right shrink-0">{idx+1}</span>
+                                  {isNote ? (
+                                    <span className="font-bold italic truncate flex items-center gap-1.5">
+                                      <span className="text-[7px] bg-amber-500/10 text-amber-500 border border-amber-500/20 px-1 py-0.5 rounded font-black uppercase shrink-0">Nota</span>
+                                      {item.song}
+                                    </span>
+                                  ) : (
+                                    <>
+                                      <span className="font-bold truncate">{item.song}</span>
+                                      <span className="text-[9px] bg-slate-900 border border-slate-800 text-blue-400 px-1 rounded shrink-0 font-mono">{item.key}</span>
+                                      {item.connected && (
+                                        <span className="text-[8px] bg-blue-500/10 text-blue-400 border border-blue-500/20 px-1 rounded font-black uppercase shrink-0">🔗 SEGUE</span>
+                                      )}
+                                    </>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-1 shrink-0">
+                                  <button onClick={() => moveSong(idx, -1)} disabled={idx === 0} className="p-1 text-slate-400 hover:text-white disabled:opacity-30"><ArrowUp size={12}/></button>
+                                  <button onClick={() => moveSong(idx, 1)} disabled={idx === activeShow.setlist.length - 1} className="p-1 text-slate-400 hover:text-white disabled:opacity-30"><ArrowDown size={12}/></button>
+                                  <button onClick={() => handleRemoveSong(idx)} className="p-1 text-red-500 hover:text-red-400 ml-1"><Trash2 size={12}/></button>
+                                </div>
                               </div>
-                              <div className="flex items-center gap-1 shrink-0">
-                                <button onClick={() => moveSong(idx, -1)} disabled={idx === 0} className="p-1 text-slate-400 hover:text-white disabled:opacity-30"><ArrowUp size={12}/></button>
-                                <button onClick={() => moveSong(idx, 1)} disabled={idx === activeShow.setlist.length - 1} className="p-1 text-slate-400 hover:text-white disabled:opacity-30"><ArrowDown size={12}/></button>
-                                <button onClick={() => handleRemoveSong(idx)} className="p-1 text-red-500 hover:text-red-400 ml-1"><Trash2 size={12}/></button>
-                              </div>
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       </Card>
                     )}
