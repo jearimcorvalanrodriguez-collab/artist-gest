@@ -116,7 +116,6 @@ export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [loginError, setLoginError] = useState('');
   const [currentUser, setCurrentUser] = useState(null);
-  const [acceptedTermsCheckbox, setAcceptedTermsCheckbox] = useState(false);
   
   // Modals and Recovery States
   const [showRecoverModal, setShowRecoverModal] = useState(false);
@@ -274,8 +273,7 @@ export default function App() {
     try {
       const res = await apiFetch('login', { 
         email: loginEmail, 
-        password: loginPassword,
-        acceptedTerms: acceptedTermsCheckbox 
+        password: loginPassword
       });
       if (res.status === 'success') {
         const user = res.user;
@@ -325,7 +323,6 @@ export default function App() {
     setActiveShow(null);
     setLoginEmail('');
     setLoginPassword('');
-    setAcceptedTermsCheckbox(false);
   };
 
   const fetchProjects = async () => {
@@ -1113,20 +1110,7 @@ export default function App() {
                   />
                 </div>
                 
-                {/* Use of Information Policy Checkbox */}
-                <div className="flex items-start gap-2 pt-1">
-                  <input 
-                    type="checkbox" 
-                    id="acceptTerms"
-                    checked={acceptedTermsCheckbox} 
-                    onChange={e => setAcceptedTermsCheckbox(e.target.checked)} 
-                    className="mt-0.5 w-3.5 h-3.5 bg-slate-950 border border-slate-800 rounded text-emerald-600 focus:ring-emerald-500 focus:ring-offset-slate-950 accent-emerald-500 cursor-pointer shrink-0" 
-                    required 
-                  />
-                  <label htmlFor="acceptTerms" className="text-[10px] text-slate-400 cursor-pointer leading-tight selection:bg-transparent">
-                    Acepto el uso y tratamiento de mi información personal conforme a las políticas de privacidad.
-                  </label>
-                </div>
+
 
                 <div className="flex items-center justify-between text-[11px] pt-1">
                   <button 
