@@ -23,7 +23,7 @@ import {
   Link,
   Settings
 } from 'lucide-react';
-import jsPDF from 'jspdf';
+import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
 
 const ESQUEMAS_MASTER_SECRET = 'Tk9fTWVfSGFja2VlczIwMjYhQCM=';
@@ -638,6 +638,9 @@ export default function App() {
       }
       pdf.save(opt.filename);
       showToast('PDF Descargado.');
+    }).catch(err => {
+      console.error(err);
+      showToast('Error al generar el PDF.');
     });
   };
 
@@ -1192,9 +1195,15 @@ export default function App() {
 
                     {/* Sync and Actions */}
                     <div className="flex gap-2">
-                      <Button onClick={handleSaveShow} disabled={loading} variant="primary" className="flex-1 py-3" icon={Save}>
-                        {loading ? 'Guardando...' : 'Sincronizar con Esquemapps'}
-                      </Button>
+                      {selectedProject?.id !== 'INDEPENDENT' ? (
+                        <Button onClick={handleSaveShow} disabled={loading} variant="primary" className="flex-1 py-3" icon={Save}>
+                          {loading ? 'Sincronizando...' : 'Sincronizar con Esquemapps'}
+                        </Button>
+                      ) : (
+                        <Button onClick={handleSaveShow} disabled={loading} variant="primary" className="flex-1 py-3" icon={Save}>
+                          {loading ? 'Guardando...' : 'Guardar Show'}
+                        </Button>
+                      )}
                       <Button onClick={downloadPDF} variant="secondary" className="px-5 py-3" icon={Download}>
                         PDF
                       </Button>
