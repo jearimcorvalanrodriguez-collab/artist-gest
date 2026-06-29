@@ -979,7 +979,7 @@ export default function App() {
 
               {/* Show Selector (Only if project selected) */}
               {selectedProject && (
-                <Card className="p-3 space-y-2">
+                <Card className="p-3 space-y-2 relative">
                   <div className="flex items-center justify-between text-[10px] text-slate-500 uppercase font-black tracking-widest border-b border-slate-850 pb-1.5">
                     <span className="flex items-center gap-1"><Music size={12}/> Shows & Ensayos</span>
                     <div className="flex items-center gap-1.5">
@@ -1038,9 +1038,9 @@ export default function App() {
                     </select>
                   </div>
 
-                  {/* Collapsible Show Settings dropdown (Ajustes del Show) */}
+                  {/* Floating Show Settings Popover (Ajustes del Show) */}
                   {activeShow && showSettingsDropdown && (
-                    <div className="p-3 bg-slate-950/60 border border-slate-850 rounded-lg space-y-3 animate-fadeIn text-left mt-2">
+                    <div className="absolute left-full top-0 ml-3 z-50 w-72 bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-2xl space-y-3 animate-fadeIn text-left">
                       <span className="text-[9px] text-slate-500 uppercase font-black tracking-widest block border-b border-slate-850 pb-1">⚙️ Configuración del Show</span>
                       
                       <div>
